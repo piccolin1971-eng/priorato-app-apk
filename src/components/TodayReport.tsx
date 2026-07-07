@@ -38,14 +38,21 @@ function StatButton({
   label,
   title,
   onClick,
+  className,
 }: {
   value: string | number;
   label: string;
   title: string;
   onClick: () => void;
+  className?: string;
 }) {
   return (
-    <button type="button" className="stat stat-clickable" onClick={onClick} title={title}>
+    <button
+      type="button"
+      className={`stat stat-clickable${className ? ` ${className}` : ""}`}
+      onClick={onClick}
+      title={title}
+    >
       <span className="stat-n">{value}</span>
       <span className="stat-l">{label}</span>
     </button>
@@ -93,8 +100,8 @@ export function TodayReport({ stays, day = todayIso(), onChange, onOpenRooms }: 
       lunch,
       dinner,
       intolerances,
-      lunchIntolerances,
-      dinnerIntolerances,
+      lunchIntolerancesCount: lunchIntolerances.length,
+      dinnerIntolerancesCount: dinnerIntolerances.length,
       freeRooms,
       occupied: occupancy.occupiedCount,
       peopleInHouse: sumPeople(inHouse),
@@ -119,7 +126,6 @@ export function TodayReport({ stays, day = todayIso(), onChange, onOpenRooms }: 
       )}
       <header className="panel-head">
         <h2>Report del {formatDateIt(day)}</h2>
-        <p className="muted">Occupazione camere e presenze a pranzo/cena.</p>
       </header>
 
       <div className="stat-grid">
@@ -137,6 +143,15 @@ export function TodayReport({ stays, day = todayIso(), onChange, onOpenRooms }: 
         />
         <Stat value={stats.lunchPeople} label="A pranzo" />
         <Stat value={stats.dinnerPeople} label="A cena" />
+        {stats.intolerances.length > 0 && (
+          <StatButton
+            value={stats.intolerances.length}
+            label={`Pranzo ${stats.lunchIntolerancesCount} · Cena ${stats.dinnerIntolerancesCount}`}
+            title="Vai al dettaglio intolleranze"
+            onClick={() => scrollToSection(SECTION.intolleranze)}
+            className="stat-alert"
+          />
+        )}
         <StatButton
           value={stats.arrivals.length}
           label="Arrivi oggi"
@@ -150,23 +165,6 @@ export function TodayReport({ stays, day = todayIso(), onChange, onOpenRooms }: 
           onClick={() => scrollToSection(SECTION.partenze)}
         />
       </div>
-
-      {(stats.lunchIntolerances.length > 0 || stats.dinnerIntolerances.length > 0) && (
-        <div className="stat-grid stat-grid-compact">
-          <StatButton
-            value={stats.lunchIntolerances.length}
-            label="Intoll. a pranzo"
-            title="Vai al dettaglio intolleranze"
-            onClick={() => scrollToSection(SECTION.intolleranze)}
-          />
-          <StatButton
-            value={stats.dinnerIntolerances.length}
-            label="Intoll. a cena"
-            title="Vai al dettaglio intolleranze"
-            onClick={() => scrollToSection(SECTION.intolleranze)}
-          />
-        </div>
-      )}
 
       {stats.groups.length > 0 && (
         <div className="card inset">

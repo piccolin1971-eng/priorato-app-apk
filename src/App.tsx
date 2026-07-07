@@ -1,4 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DayPicker } from "react-day-picker";
+import { it } from "react-day-picker/locale";
 import type { GuestStay, TabId } from "./types";
 import { loadStays } from "./storage";
 import { RegistrationForm } from "./components/RegistrationForm";
@@ -8,15 +10,14 @@ import { PlanningView } from "./components/PlanningView";
 import { PrintReportPanel } from "./components/PrintReportPanel";
 import { FontZoomButtons } from "./components/FontZoomButtons";
 import { SettingsView } from "./components/SettingsView";
-import { DateInput } from "./components/DateInput";
-import { todayIso } from "./utils";
+import { dateToIso, formatDateIt, isoToDate, todayIso } from "./utils";
 import "./App.css";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "oggi", label: "Oggi" },
   { id: "registra", label: "Registra" },
   { id: "camere", label: "Camere" },
-  { id: "pianificazione", label: "Piano" },
+  { id: "pianificazione", label: "Occupazione/Disponibilità" },
   { id: "stampa", label: "Stampa" },
 ];
 
@@ -35,6 +36,85 @@ function GearIcon() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function addDays(iso: string, delta: number): string {
+  const base = isoToDate(iso) ?? new Date();
+  base.setDate(base.getDate() + delta);
+  return dateToIso(base);
+}
+
+function QuickReportDayPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const today = todayIso();
+  const options = useMemo(
+    () => [
+      { id: "oggi", label: "Oggi", iso: today },
+      { id: "domani", label: "Domani", iso: addDays(today, 1) },
+      { id: "dopodomani", label: "Dopodomani", iso: addDays(today, 2) },
+    ],
+    [today],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  return (
+    <div className="quick-report-day" ref={wrapRef}>
+      <div className="quick-report-day-row">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            className={value === opt.iso ? "quick-day-btn active" : "quick-day-btn"}
+            onClick={() => onChange(opt.iso)}
+          >
+            <span className="quick-day-main">{opt.label}</span>
+            <span className="quick-day-date">{formatDateIt(opt.iso)}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          className={`btn quick-day-cal-btn${open ? " active" : ""}`}
+          title="Apri calendario"
+          aria-label="Apri calendario giorno report"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          📅
+        </button>
+      </div>
+      {open && (
+        <div className="date-popover" role="dialog" aria-label="Calendario giorno report">
+          <DayPicker
+            mode="single"
+            locale={it}
+            weekStartsOn={1}
+            selected={isoToDate(value)}
+            onSelect={(d) => {
+              if (!d) return;
+              onChange(dateToIso(d));
+              setOpen(false);
+            }}
+            defaultMonth={isoToDate(value)}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -61,7 +141,7 @@ export default function App() {
         <h1 className="app-title">Priorato</h1>
         <div className="topbar-actions">
           {!inSettings && tab !== "stampa" && (
-            <DateInput label="Giorno report" value={reportDay} onChange={setReportDay} />
+            <QuickReportDayPicker value={reportDay} onChange={setReportDay} />
           )}
           <div className="topbar-icon-group">
             <FontZoomButtons />

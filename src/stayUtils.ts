@@ -31,11 +31,15 @@ export function stayDisplayName(stay: GuestStay): string {
 export function stayRoomsLabel(stay: GuestStay): string {
   const ids = getStayRoomIds(stay);
   if (ids.length === 0) return "—";
-  if (ids.length === 1) {
-    return ROOMS.find((r) => r.id === ids[0])?.label ?? ids[0]!;
-  }
-  const nums = ids.map((id) => ROOMS.find((r) => r.id === id)?.number ?? id);
-  return `Camere ${nums.join(", ")}`;
+
+  const roomParts = ids.map((id) => {
+    const room = ROOMS.find((r) => String(r.id) === String(id));
+    if (!room) return String(id);
+    return `${room.number}${room.bedType === "double" ? " (doppia)" : ""}`;
+  });
+
+  if (ids.length === 1) return roomParts[0] ?? "—";
+  return `Camere ${roomParts.join(", ")}`;
 }
 
 export function mealPersonCount(stay: GuestStay, meal: "lunch" | "dinner"): number {

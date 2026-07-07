@@ -214,9 +214,75 @@ body {
   flex-shrink: 0;
 }
 
+.quick-report-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.quick-report-day-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.quick-day-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 94px;
+  padding: 0.4rem 0.55rem;
+  border: 3px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.quick-day-btn:hover {
+  border-color: var(--primary-muted);
+  background: var(--surface-alt);
+}
+
+.quick-day-btn.active {
+  border-color: var(--primary);
+  background: var(--highlight-bg);
+  color: var(--primary);
+}
+
+.quick-day-main {
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.quick-day-date {
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  opacity: 0.95;
+}
+
+.quick-day-cal-btn {
+  min-width: 42px;
+  padding: 0.45rem 0.55rem;
+}
+
+.quick-day-cal-btn.active {
+  border-color: var(--primary);
+  background: var(--highlight-bg);
+  color: var(--primary);
+}
+
 .topbar-icon-group {
   display: flex;
-  border: 1px solid var(--line-strong);
+  border: 2px solid var(--line-strong);
   border-radius: 8px;
   overflow: hidden;
   background: var(--surface);
@@ -229,7 +295,7 @@ body {
   height: 40px;
   padding: 0 0.35rem;
   border: none;
-  border-right: 1px solid var(--line);
+  border-right: 2px solid var(--line);
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
@@ -264,10 +330,10 @@ body {
 .tab {
   flex: 1;
   padding: 0.55rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 3px solid var(--line-strong);
   border-radius: 8px;
   background: var(--surface);
-  color: var(--muted);
+  color: var(--ink);
   font-weight: 700;
   font-size: 0.84rem;
   cursor: pointer;
@@ -275,11 +341,13 @@ body {
 }
 
 .tab:hover:not(.active) {
-  border-color: var(--line-strong);
+  border-color: var(--primary-muted);
   color: var(--ink);
+  background: var(--surface-alt);
 }
 
 .tab.active {
+  border-width: 3px;
   border-color: var(--primary);
   color: var(--primary);
   background: var(--highlight-bg);
@@ -294,9 +362,9 @@ body {
 /* ── Pannelli ────────────────────────────────────────────────────── */
 .panel {
   background: var(--surface);
-  border: 1px solid var(--line-strong);
+  border: 3px solid var(--line-strong);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow);
   padding: 1.2rem;
 }
 
@@ -324,8 +392,8 @@ body {
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: 0.6rem;
-  margin: 1rem 0;
+  gap: 0.5rem;
+  margin: 0.7rem 0 0.8rem;
 }
 
 .stat-grid-compact {
@@ -336,11 +404,12 @@ body {
 .stat {
   background: var(--surface);
   border-radius: var(--radius-sm);
-  padding: 0.8rem 0.55rem;
+  padding: 0.55rem 0.45rem;
   text-align: center;
-  border: 2px solid var(--line);
+  border: 3px solid var(--line-strong);
   font: inherit;
   color: inherit;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
 }
 
 .stat-clickable {
@@ -350,22 +419,47 @@ body {
 
 .stat-clickable:hover {
   transform: translateY(-1px);
+  border-color: var(--primary-muted);
+  background: var(--highlight-bg);
+}
+
+.stat-clickable:focus-visible {
+  outline: none;
   border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.stat-alert {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+}
+
+.stat-alert .stat-n {
+  color: var(--warn);
+}
+
+.stat-alert .stat-l {
+  color: var(--warn);
+}
+
+.stat-alert:hover {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn-bg) 80%, var(--surface) 20%);
 }
 
 .stat-n {
   display: block;
-  font-size: 1.5rem;
+  font-size: 1.28rem;
   font-weight: 800;
   color: var(--primary);
   letter-spacing: -0.03em;
-  line-height: 1.1;
+  line-height: 1.05;
 }
 
 .stat-l {
   display: block;
-  margin-top: 0.2rem;
-  font-size: 0.7rem;
+  margin-top: 0.08rem;
+  font-size: 0.66rem;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
@@ -389,8 +483,8 @@ body {
 
 .card.inset {
   background: var(--surface-alt);
-  padding: 1rem;
-  margin: 0.75rem 0;
+  padding: 0.75rem 0.8rem;
+  margin: 0.45rem 0;
   border: 2px solid var(--line);
 }
 
@@ -400,7 +494,7 @@ body {
 }
 
 .card h3 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.35rem;
   font-size: 0.92rem;
   font-weight: 800;
 }
@@ -527,7 +621,7 @@ select:focus {
 }
 
 .btn {
-  border: 2px solid transparent;
+  border: 3px solid var(--line-strong);
   border-radius: var(--radius-sm);
   padding: 0.6rem 1.1rem;
   font: inherit;
@@ -539,7 +633,7 @@ select:focus {
 .btn.primary {
   background: var(--primary);
   color: #ffffff;
-  border-color: var(--primary);
+  border-color: var(--primary-muted);
 }
 
 .btn.primary:hover:not(:disabled) {
@@ -553,14 +647,14 @@ select:focus {
 
 .btn.ghost {
   background: var(--surface);
-  color: var(--muted);
-  border-color: var(--line);
+  color: var(--ink);
+  border-color: var(--line-strong);
 }
 
 .btn.ghost:hover {
   color: var(--ink);
-  border-color: var(--line-strong);
-  background: var(--surface-alt);
+  border-color: var(--primary-muted);
+  background: var(--highlight-bg);
 }
 
 .btn.small {
@@ -587,7 +681,7 @@ select:focus {
 .split-panels {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.55rem;
 }
 
 @media (max-width: 700px) {
@@ -598,7 +692,7 @@ select:focus {
 
 .simple-list,
 .guest-list {
-  margin: 0;
+  margin: 0.1rem 0 0;
   padding-left: 1.1rem;
 }
 
@@ -612,8 +706,13 @@ select:focus {
   justify-content: space-between;
   align-items: flex-start;
   gap: 0.5rem;
-  padding: 0.65rem 0;
+  padding: 0.35rem 0;
   border-bottom: 1px solid var(--line);
+}
+
+.split-panels .card.inset,
+.report-section.card.inset {
+  padding: 0.65rem 0.75rem;
 }
 
 .guest-row strong {
@@ -733,6 +832,12 @@ select:focus {
   display: none;
 }
 
+@media (max-width: 920px) {
+  .quick-report-day-row {
+    flex-wrap: wrap;
+  }
+}
+
 /* ── Camere ──────────────────────────────────────────────────────── */
 .room-section {
   margin-top: 1rem;
@@ -817,24 +922,34 @@ select:focus {
 
 /* ── Piano ───────────────────────────────────────────────────────── */
 .plan-check h3 {
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.45rem;
+}
+
+.plan-check .grid.two {
+  gap: 0.55rem;
 }
 
 .plan-rooms-needed {
-  margin-top: 0.75rem;
-  max-width: 200px;
+  margin-top: 0.45rem;
+  max-width: 220px;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
 }
 
 .plan-rooms-needed input {
-  width: 100%;
+  width: 72px;
+  padding: 0.35rem 0.5rem;
 }
 
 .plan-result {
-  margin-top: 1rem;
-  padding: 0.85rem 1rem;
+  margin-top: 0.6rem;
+  padding: 0.65rem 0.8rem;
   border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  line-height: 1.45;
+  font-size: 0.84rem;
+  line-height: 1.35;
   border: 2px solid transparent;
 }
 
@@ -855,10 +970,19 @@ select:focus {
 .plan-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 1rem;
   margin: 1rem 0 0.5rem;
+}
+
+.plan-toolbar .segmented {
+  align-items: stretch;
+}
+
+.plan-toolbar .seg {
+  min-height: 42px;
+  padding: 0.5rem 0.9rem;
 }
 
 .plan-nav {
@@ -867,9 +991,27 @@ select:focus {
   gap: 0.75rem;
 }
 
+.plan-nav .btn {
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .plan-period {
   font-weight: 800;
-  min-width: 180px;
+  min-width: 230px;
+  min-height: 42px;
+  padding: 0.5rem 0.75rem;
+  border: 3px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
@@ -959,8 +1101,10 @@ select:focus {
 }
 
 .plan-day-free {
-  font-size: 0.64rem;
+  font-size: 0.69rem;
+  font-weight: 700;
   color: var(--muted);
+  letter-spacing: 0;
 }
 
 .plan-month {
@@ -1112,6 +1256,7 @@ select:focus {
   gap: 0.1rem;
   border: 2px solid var(--line);
   background: var(--plan-room-free-bg);
+  position: relative;
 }
 
 .plan-room.free {
@@ -1132,6 +1277,45 @@ select:focus {
   font-weight: 800;
   font-size: 0.86rem;
   line-height: 1.1;
+}
+
+.plan-room-markers {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  padding: 0 1px;
+}
+
+.plan-room-marker {
+  width: 11px;
+  height: 11px;
+  transform: none;
+  border-radius: 999px;
+  border: 1px solid #111;
+  background: var(--ok-border);
+}
+
+.plan-room-markers-double {
+  justify-content: space-between;
+}
+
+.plan-room-markers-single {
+  justify-content: flex-end;
+}
+
+.plan-room-marker.free {
+  border-color: var(--ok-border);
+  border-color: #111;
+  background: var(--ok-border);
+}
+
+.plan-room-marker.occupied {
+  border-color: #111;
+  background: var(--danger-border);
 }
 
 .plan-room-guest {

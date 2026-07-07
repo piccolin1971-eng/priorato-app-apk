@@ -110,7 +110,8 @@ export const LEGACY_ROOM_ID_MAP: Record<string, string> = {
 };
 
 export function normalizeRoomId(roomId: string): string {
-  return LEGACY_ROOM_ID_MAP[roomId] ?? roomId;
+  const key = String(roomId ?? "").trim();
+  return LEGACY_ROOM_ID_MAP[key] ?? key;
 }
 
 export type RoomSectionId = "vecchia-p1" | "vecchia-p2" | "nuova-p1" | "nuova-p2";

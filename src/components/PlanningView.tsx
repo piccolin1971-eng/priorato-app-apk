@@ -88,7 +88,7 @@ export function PlanningView({ stays, day = todayIso() }: Props) {
   const [selectedDay, setSelectedDay] = useState(day);
   const [checkIn, setCheckIn] = useState(today);
   const [checkOut, setCheckOut] = useState(() => defaultCheckOut(today));
-  const [roomsNeeded, setRoomsNeeded] = useState(5);
+  const [roomsNeeded, setRoomsNeeded] = useState(1);
 
   useEffect(() => {
     setSelectedDay(day);
@@ -151,7 +151,7 @@ export function PlanningView({ stays, day = todayIso() }: Props) {
   return (
     <section className="panel">
       <header className="panel-head">
-        <h2>Pianificazione</h2>
+        <h2>Occupazione/Disponibilità</h2>
         <p className="muted">Occupazione mese per mese o settimana per settimana — verifica posti senza registrare.</p>
       </header>
 
@@ -162,7 +162,7 @@ export function PlanningView({ stays, day = todayIso() }: Props) {
           <DateInput label="Partenza" value={checkOut} onChange={setCheckOut} />
         </div>
         <label className="plan-rooms-needed">
-          Camere richieste
+          <span>Camere richieste</span>
           <input
             type="number"
             min={1}
@@ -325,6 +325,7 @@ export function PlanningView({ stays, day = todayIso() }: Props) {
                 <div className="plan-block-rooms">
                   {sectionRooms.map((room) => {
                     const stay = stayByRoom.get(room.id);
+                    const markerCount = room.bedType === "double" ? 2 : 1;
                     return (
                       <div
                         key={room.id}
@@ -335,6 +336,19 @@ export function PlanningView({ stays, day = todayIso() }: Props) {
                             : "Libera"
                         }
                       >
+                        <div
+                          className={`plan-room-markers ${
+                            markerCount === 2 ? "plan-room-markers-double" : "plan-room-markers-single"
+                          }`}
+                          aria-hidden
+                        >
+                          {Array.from({ length: markerCount }).map((_, i) => (
+                            <span
+                              key={`${room.id}-m-${i}`}
+                              className={`plan-room-marker ${stay ? "occupied" : "free"}`}
+                            />
+                          ))}
+                        </div>
                         <span className="plan-room-n">
                           {room.number}
                           {room.large && <span className="room-extra-badge">extra</span>}
