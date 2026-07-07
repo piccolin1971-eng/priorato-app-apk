@@ -11,6 +11,14 @@ export function formatDateIt(iso: string): string {
   return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
 }
 
+/** Nome giorno in italiano (es. Giovedì). */
+export function formatWeekdayIt(iso: string): string {
+  const d = isoToDate(iso);
+  if (!d) return "";
+  const name = d.toLocaleDateString("it-IT", { weekday: "long" });
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 /** Converte gg/mm/aaaa o gg-mm-aaaa in ISO yyyy-mm-dd */
 export function parseDateIt(text: string): string | null {
   const t = text.trim();

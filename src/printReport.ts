@@ -18,6 +18,7 @@ export type PrintReportOptions = {
   includeGroups: boolean;
   includeArrivalsDepartures: boolean;
   includeNotes: boolean;
+  includeHistoryStats: boolean;
 };
 
 export type DaySnapshot = {
@@ -150,6 +151,48 @@ export function periodTotals(snapshots: DaySnapshot[]) {
   return { maxOccupied, totalArrivals, totalDepartures, totalRooms: TOTAL_ROOMS };
 }
 
+export type PeriodAnalytics = {
+  avgOccupancy: number;
+  avgPeople: number;
+  avgLunch: number;
+  avgDinner: number;
+  totalPersonNights: number;
+  busiestDay: { day: string; occupancy: number } | null;
+  quietestDay: { day: string; occupancy: number } | null;
+};
+
+export function periodAnalytics(snapshots: DaySnapshot[]): PeriodAnalytics {
+  if (!snapshots.length) {
+    return {
+      avgOccupancy: 0,
+      avgPeople: 0,
+      avgLunch: 0,
+      avgDinner: 0,
+      totalPersonNights: 0,
+      busiestDay: null,
+      quietestDay: null,
+    };
+  }
+  const n = snapshots.length;
+  const sum = (fn: (s: DaySnapshot) => number) => snapshots.reduce((acc, s) => acc + fn(s), 0);
+  const round1 = (v: number) => Math.round(v * 10) / 10;
+  let busiest = snapshots[0]!;
+  let quietest = snapshots[0]!;
+  for (const s of snapshots) {
+    if (s.occupancy > busiest.occupancy) busiest = s;
+    if (s.occupancy < quietest.occupancy) quietest = s;
+  }
+  return {
+    avgOccupancy: round1(sum((s) => s.occupancy) / n),
+    avgPeople: round1(sum((s) => s.peopleInHouse) / n),
+    avgLunch: round1(sum((s) => s.lunchPeople) / n),
+    avgDinner: round1(sum((s) => s.dinnerPeople) / n),
+    totalPersonNights: sum((s) => s.peopleInHouse),
+    busiestDay: { day: busiest.day, occupancy: busiest.occupancy },
+    quietestDay: { day: quietest.day, occupancy: quietest.occupancy },
+  };
+}
+
 export const DEFAULT_PRINT_OPTIONS: PrintReportOptions = {
   period: "day",
   anchorDate: "",
@@ -162,4 +205,5 @@ export const DEFAULT_PRINT_OPTIONS: PrintReportOptions = {
   includeGroups: true,
   includeArrivalsDepartures: true,
   includeNotes: false,
+  includeHistoryStats: false,
 };

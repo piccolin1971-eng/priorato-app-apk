@@ -141,8 +141,10 @@ export function PlanningView({ stays, day = todayIso() }: Props) {
         onClick={() => setSelectedDay(day)}
         title={`${formatDateIt(day)}: ${occupied} occupate, ${free} libere`}
       >
-        <span className="plan-day-n">{Number(day.slice(8, 10))}</span>
-        <span className="plan-day-stat">{occupied}/{TOTAL_ROOMS}</span>
+        <span className="plan-day-head">
+          <span className="plan-day-n">{Number(day.slice(8, 10))}</span>
+          <span className="plan-day-stat">{occupied}/{TOTAL_ROOMS}</span>
+        </span>
         <span className="plan-day-free">{free} libere</span>
       </button>
     );

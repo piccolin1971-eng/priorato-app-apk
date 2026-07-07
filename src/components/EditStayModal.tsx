@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BoardType, GuestStay, RegistrationKind } from "../types";
 import { assignNearbyPartyRooms, partyPeopleAndRooms } from "../assignNearbyRooms";
-import { getAvailableRooms } from "../roomAvailability";
-import { updateStay } from "../storage";
-import { getPersonCount, getStayRoomIds } from "../stayUtils";
+import { getAvailableRooms, findRoomOverlaps, formatOverlapMessage } from "../roomAvailability";
+import { deleteStay, updateStay } from "../storage";
+import { getPersonCount, getStayRoomIds, stayDisplayName, stayRoomsLabel } from "../stayUtils";
+import { useSettings } from "../SettingsContext";
 import { boardLabel, defaultMeals } from "../utils";
 import { DateInput } from "./DateInput";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 type Props = {
   stay: GuestStay;
@@ -23,6 +25,13 @@ type FormState = {
   groupName: string;
   leaderName: string;
   leaderPhone: string;
+  groupParticipants: {
+    name: string;
+    roomType: "single" | "double";
+    inRoomWith: string;
+    roomId: string;
+    intolerances: string;
+  }[];
   roomId: string;
   checkIn: string;
   checkOut: string;
@@ -47,6 +56,14 @@ function stayToForm(stay: GuestStay): FormState {
     groupName: stay.group?.name ?? "",
     leaderName: stay.group?.leaderName ?? "",
     leaderPhone: stay.group?.leaderPhone ?? "",
+    groupParticipants:
+      stay.group?.participants?.map((p) => ({
+        name: p.name,
+        roomType: p.roomType ?? "single",
+        inRoomWith: p.inRoomWith ?? "",
+        roomId: p.roomId,
+        intolerances: p.intolerances ?? "",
+      })) ?? [],
     roomId: stay.roomId,
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
@@ -61,13 +78,15 @@ function stayToForm(stay: GuestStay): FormState {
 }
 
 export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
+  const { confirmBeforeDelete } = useSettings();
   const [form, setForm] = useState(() => stayToForm(stay));
   const [message, setMessage] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [partySelectedRoomIds, setPartySelectedRoomIds] = useState<string[]>(getStayRoomIds(stay));
   const datesValid = form.checkOut > form.checkIn;
   const totalPeople = 1 + Math.max(0, form.partyExtra);
   const partyLayout = partyPeopleAndRooms(totalPeople, form.partyCouples);
-  const bedFilter = form.mode === "double" ? "double" : form.mode === "single" || form.mode === "group" ? "single" : undefined;
+  const bedFilter = form.mode === "double" ? "double" : form.mode === "single" ? "single" : undefined;
 
   const availableRooms = useMemo(
     () => (datesValid && form.mode !== "party" ? getAvailableRooms(stays, form.checkIn, form.checkOut, stay.id, bedFilter) : []),
@@ -87,7 +106,7 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
     if (!datesValid || form.mode === "party") return;
     const freeIds = new Set(availableRooms.map((r) => r.id));
     if (!form.roomId || !freeIds.has(form.roomId)) {
-      const next = availableRooms[0]?.id ?? "";
+      const next = availableRooms.find((r) => r.id !== "106")?.id ?? availableRooms[0]?.id ?? "";
       if (next !== form.roomId) setForm((f) => ({ ...f, roomId: next }));
     }
   }, [availableRooms, datesValid, form.roomId, form.mode]);
@@ -122,6 +141,24 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
     );
   }
 
+  function updateGroupParticipant(
+    idx: number,
+    patch: Partial<{
+      name: string;
+      roomType: "single" | "double";
+      inRoomWith: string;
+      roomId: string;
+      intolerances: string;
+    }>,
+  ) {
+    setForm((f) => ({
+      ...f,
+      groupParticipants: f.groupParticipants.map((row, i) =>
+        i === idx ? { ...row, ...patch } : row,
+      ),
+    }));
+  }
+
   const partySelectionOk = useMemo(() => {
     if (form.mode !== "party") return true;
     if (!partyLayout.valid) return false;
@@ -134,28 +171,90 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.guestName.trim()) return setMessage("Inserisci il nome dell'ospite.");
+    if (form.mode !== "group" && !form.guestName.trim()) return setMessage("Inserisci il nome dell'ospite.");
     if (!datesValid) return setMessage("La data di partenza deve essere dopo l'arrivo.");
     if (form.mode === "group" && !form.leaderName.trim()) return setMessage("Per i gruppi indica il capo gruppo.");
     if (form.mode === "double" && !form.secondGuestName.trim()) return setMessage("Inserisci il nome del secondo ospite.");
-    if (form.mode !== "party" && (!form.roomId || !availableRooms.some((r) => r.id === form.roomId))) {
+    if (form.mode !== "party" && form.mode !== "group" && (!form.roomId || !availableRooms.some((r) => r.id === form.roomId))) {
       return setMessage("Camera non disponibile per le date selezionate.");
     }
     if (form.mode === "party" && (!partyLayout.valid || !partySelectionOk)) {
       return setMessage("Seleziona il numero corretto di camere (doppie/singole) per il gruppo.");
     }
+    if (form.mode === "group") {
+      if (!form.leaderName.trim()) return setMessage("Per i gruppi indica il capo gruppo.");
+      if (!form.roomId || !availableRooms.some((r) => r.id === form.roomId)) {
+        return setMessage("Seleziona una stanza valida per il capo gruppo.");
+      }
+      const participants = form.groupParticipants
+        .map((p) => ({
+          name: p.name.trim(),
+          roomType: p.roomType,
+          inRoomWith: p.inRoomWith.trim(),
+          roomId: p.roomId,
+          intolerances: p.intolerances.trim(),
+        }))
+        .filter((p) => p.name || p.roomId || p.intolerances || p.inRoomWith);
+      if (participants.some((p) => !p.name || !p.roomId)) {
+        return setMessage("Ogni partecipante deve avere nome e stanza assegnata.");
+      }
+      if (participants.some((p) => p.roomType === "double" && !p.inRoomWith)) {
+        return setMessage("Per ogni camera doppia indica “In camera con”.");
+      }
+      const allRoomIds = [form.roomId, ...participants.map((p) => p.roomId)];
+      if (new Set(allRoomIds).size !== allRoomIds.length) {
+        return setMessage("Ogni membro del gruppo deve avere una stanza diversa.");
+      }
+      if (!allRoomIds.every((id) => availableRooms.some((r) => r.id === id))) {
+        return setMessage("Una o più stanze del gruppo non sono disponibili per le date selezionate.");
+      }
+    }
+
     const selectedPartyRooms = partyAvailableRooms.filter((r) => partySelectedRoomIds.includes(r.id));
+    const groupParticipants = form.groupParticipants
+      .map((p) => ({
+        name: p.name.trim(),
+        roomType: p.roomType,
+        inRoomWith: p.inRoomWith.trim(),
+        roomId: p.roomId,
+        intolerances: p.intolerances.trim(),
+      }))
+      .filter((p) => p.name || p.roomId || p.intolerances || p.inRoomWith);
+
+    const roomIds =
+      form.mode === "party"
+        ? selectedPartyRooms.map((r) => r.id)
+        : form.mode === "group"
+          ? [form.roomId, ...groupParticipants.map((p) => p.roomId)]
+          : [form.roomId];
+
+    const overlaps = findRoomOverlaps(stays, form.checkIn, form.checkOut, roomIds, stay.id);
+    if (overlaps.length) {
+      return setMessage(formatOverlapMessage(overlaps));
+    }
 
     const updated: GuestStay = {
       ...stay,
       kind: form.mode,
-      guestName: form.guestName.trim(),
+      guestName: form.mode === "group" ? form.leaderName.trim() : form.guestName.trim(),
       secondGuestName: form.mode === "double" ? form.secondGuestName.trim() : undefined,
       guestPhone: form.guestPhone.trim() || undefined,
       guestEmail: form.guestEmail.trim() || undefined,
       roomId: form.mode === "party" ? selectedPartyRooms[0]!.id : form.roomId,
-      roomIds: form.mode === "party" ? selectedPartyRooms.map((r) => r.id) : [form.roomId],
-      personCount: form.mode === "double" ? 2 : form.mode === "party" ? totalPeople : 1,
+      roomIds:
+        form.mode === "party"
+          ? selectedPartyRooms.map((r) => r.id)
+          : form.mode === "group"
+            ? [form.roomId, ...groupParticipants.map((p) => p.roomId)]
+            : [form.roomId],
+      personCount:
+        form.mode === "double"
+          ? 2
+          : form.mode === "party"
+            ? totalPeople
+            : form.mode === "group"
+              ? 1 + groupParticipants.reduce((n, p) => n + (p.roomType === "double" ? 2 : 1), 0)
+              : 1,
       checkIn: form.checkIn,
       checkOut: form.checkOut,
       board: form.board,
@@ -169,6 +268,13 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
               name: form.groupName.trim() || "Gruppo senza nome",
               leaderName: form.leaderName.trim(),
               leaderPhone: form.leaderPhone.trim() || undefined,
+              participants: groupParticipants.map((p) => ({
+                name: p.name,
+                roomId: p.roomId,
+                roomType: p.roomType,
+                inRoomWith: p.roomType === "double" ? p.inRoomWith : undefined,
+                intolerances: p.intolerances || undefined,
+              })),
             }
           : undefined,
     };
@@ -185,13 +291,30 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
         </header>
         <form className="form" onSubmit={handleSubmit}>
           <div className="grid two">
-            {form.mode !== "double" && form.mode !== "party" && (
+            {form.mode !== "double" && form.mode !== "party" && form.mode !== "group" && (
               <label>Nome ospite *<input value={form.guestName} onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))} /></label>
             )}
-            <label>Camera *<select value={form.roomId} disabled={form.mode === "party" || !datesValid || availableRooms.length === 0} onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}>{availableRooms.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>
+            {form.mode !== "group" && <label>Camera *<select value={form.roomId} disabled={form.mode === "party" || !datesValid || availableRooms.length === 0} onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}>{availableRooms.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>}
             <DateInput label="Arrivo" value={form.checkIn} onChange={(checkIn) => setForm((f) => ({ ...f, checkIn }))} />
             <DateInput label="Partenza" value={form.checkOut} onChange={(checkOut) => setForm((f) => ({ ...f, checkOut }))} />
           </div>
+          {form.mode === "group" && (
+            <div className="card inset">
+              <h3>Gruppo</h3>
+              <div className="grid two">
+                <label>Nome gruppo<input value={form.groupName} onChange={(e) => setForm((f) => ({ ...f, groupName: e.target.value }))} /></label>
+                <label>Capo gruppo *<input value={form.leaderName} onChange={(e) => setForm((f) => ({ ...f, leaderName: e.target.value }))} /></label>
+                <label>Telefono capo gruppo<input type="tel" value={form.leaderPhone} onChange={(e) => setForm((f) => ({ ...f, leaderPhone: e.target.value }))} /></label>
+                <label>Stanza capo gruppo *<select value={form.roomId} disabled={!datesValid || availableRooms.length === 0} onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}>{availableRooms.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>
+              </div>
+              {form.groupParticipants.map((p, idx) => {
+                const taken = new Set([form.roomId, ...form.groupParticipants.map((row) => row.roomId)].filter(Boolean));
+                const participantNumber = 1 + form.groupParticipants.slice(0, idx).reduce((n, row) => n + (row.roomType === "double" ? 2 : 1), 0);
+                return <div key={`egrp-${idx}`} className="card inset"><div className="grid two"><label>Partecipante {participantNumber} *<input value={p.name} onChange={(e) => updateGroupParticipant(idx, { name: e.target.value })} /></label><label>Tipo camera<select value={p.roomType} onChange={(e) => updateGroupParticipant(idx, { roomType: e.target.value as "single" | "double", roomId: "", inRoomWith: "" })}><option value="single">Singola</option><option value="double">Doppia</option></select></label>{p.roomType === "double" && <label>In camera con (partecipante {participantNumber + 1}) *<input value={p.inRoomWith} onChange={(e) => updateGroupParticipant(idx, { inRoomWith: e.target.value })} /></label>}<label>Stanza assegnata *<select value={p.roomId} onChange={(e) => updateGroupParticipant(idx, { roomId: e.target.value })}><option value="">Seleziona stanza</option>{availableRooms.filter((r) => (r.id === p.roomId || !taken.has(r.id)) && r.bedType === p.roomType).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label><label>Intolleranze<input value={p.intolerances} onChange={(e) => updateGroupParticipant(idx, { intolerances: e.target.value })} /></label></div><div className="actions"><button type="button" className="btn ghost small" onClick={() => setForm((f) => ({ ...f, groupParticipants: f.groupParticipants.filter((_, i) => i !== idx) }))}>Rimuovi</button></div></div>;
+              })}
+              <div className="actions"><button type="button" className="btn ghost small" onClick={() => setForm((f) => ({ ...f, groupParticipants: [...f.groupParticipants, { name: "", roomType: "single", inRoomWith: "", roomId: "", intolerances: "" }] }))}>+ Aggiungi partecipante</button></div>
+            </div>
+          )}
           {form.mode === "double" && (
             <div className="card inset">
               <h3>Camera doppia</h3>
@@ -232,13 +355,33 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
             <label><input type="checkbox" checked={form.lunch} onChange={(e) => setForm((f) => ({ ...f, lunch: e.target.checked }))} />Pranzo</label>
             <label><input type="checkbox" checked={form.dinner} onChange={(e) => setForm((f) => ({ ...f, dinner: e.target.checked }))} />Cena</label>
           </fieldset>
+          <div className="grid two">
+            <label>Intolleranze / allergie<input value={form.intolerances} onChange={(e) => setForm((f) => ({ ...f, intolerances: e.target.value }))} /></label>
+            <label>Note<input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></label>
+          </div>
           <div className="actions">
             <button type="submit" className="btn primary">Salva modifiche</button>
             <button type="button" className="btn ghost" onClick={onClose}>Annulla</button>
+            <button
+              type="button"
+              className="btn danger"
+              onClick={() => (confirmBeforeDelete ? setDeleteOpen(true) : onSaved(deleteStay(stay.id)))}
+            >
+              Elimina
+            </button>
             {message && <p className="feedback warn-text">{message}</p>}
           </div>
         </form>
       </div>
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Elimina ospite"
+        message={`Eliminare definitivamente ${stayDisplayName(stay)} (${stayRoomsLabel(stay)})?`}
+        confirmLabel="Elimina"
+        danger
+        onConfirm={() => onSaved(deleteStay(stay.id))}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </div>
   );
 }

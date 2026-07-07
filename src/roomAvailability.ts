@@ -1,6 +1,6 @@
 import type { GuestStay, Room } from "./types";
 import { ROOMS, normalizeRoomId } from "./data/rooms";
-import { getStayRoomIds } from "./stayUtils";
+import { getStayRoomIds, stayDisplayName } from "./stayUtils";
 import { dateToIso, isActiveOn, isoToDate, staysOverlap } from "./utils";
 
 export const TOTAL_ROOMS = ROOMS.length;
@@ -40,7 +40,8 @@ export function pickFirstFreeRoom(
   checkOut: string,
   bedType?: Room["bedType"],
 ): string {
-  return getAvailableRooms(stays, checkIn, checkOut, undefined, bedType)[0]?.id ?? "";
+  const rooms = getAvailableRooms(stays, checkIn, checkOut, undefined, bedType);
+  return rooms.find((r) => r.id !== "106")?.id ?? rooms[0]?.id ?? "";
 }
 
 export function countOccupiedOnDay(stays: GuestStay[], day: string): number {
@@ -161,4 +162,42 @@ export function verifyAvailability(
     minFreeDay,
     days: perDay,
   };
+}
+
+export type RoomOverlap = {
+  roomId: string;
+  stays: GuestStay[];
+};
+
+export function findRoomOverlaps(
+  stays: GuestStay[],
+  checkIn: string,
+  checkOut: string,
+  roomIds: string[],
+  excludeStayId?: string,
+): RoomOverlap[] {
+  if (!checkIn || !checkOut || checkOut <= checkIn || roomIds.length === 0) return [];
+  const occupied = getOccupiedRoomIds(stays, checkIn, checkOut, excludeStayId);
+  const overlaps: RoomOverlap[] = [];
+  for (const roomId of roomIds) {
+    if (!occupied.has(roomId)) continue;
+    const conflicting = stays.filter(
+      (s) =>
+        s.id !== excludeStayId &&
+        staysOverlap(checkIn, checkOut, s) &&
+        getStayRoomIds(s).includes(roomId),
+    );
+    if (conflicting.length) overlaps.push({ roomId, stays: conflicting });
+  }
+  return overlaps;
+}
+
+export function formatOverlapMessage(overlaps: RoomOverlap[]): string {
+  return overlaps
+    .map(({ roomId, stays: list }) => {
+      const room = ROOMS.find((r) => r.id === roomId);
+      const names = list.map((s) => stayDisplayName(s)).join(", ");
+      return `Camera ${room?.number ?? roomId} già occupata da ${names}`;
+    })
+    .join(". ");
 }

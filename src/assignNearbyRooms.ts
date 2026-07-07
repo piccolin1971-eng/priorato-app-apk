@@ -67,6 +67,49 @@ function planInSection(
   return [...pickedDoubles, ...pickedSingles];
 }
 
+function orderedSectionKeys(bySection: Map<string, { doubles: Room[]; singles: Room[] }>): string[] {
+  const keys = [...bySection.keys()];
+  const known = ROOM_SECTIONS.map((sec) => {
+    const sample = ROOMS.find(sec.filter);
+    return sample ? sectionKey(sample) : null;
+  }).filter(Boolean) as string[];
+  const inOrder = known.filter((k) => bySection.has(k));
+  const extra = keys.filter((k) => !inOrder.includes(k)).sort();
+  return [...inOrder, ...extra];
+}
+
+function planAcrossSections(
+  bySection: Map<string, { doubles: Room[]; singles: Room[] }>,
+  couplesCount: number,
+  singlesCount: number,
+): { rooms: Room[]; keysUsed: string[] } | null {
+  let couplesLeft = couplesCount;
+  let singlesLeft = singlesCount;
+  const chosen: Room[] = [];
+  const keysUsed: string[] = [];
+
+  for (const key of orderedSectionKeys(bySection)) {
+    if (couplesLeft <= 0 && singlesLeft <= 0) break;
+    const section = bySection.get(key);
+    if (!section) continue;
+
+    const doubles = [...section.doubles].sort((a, b) => a.number - b.number);
+    const singles = [...section.singles].sort((a, b) => a.number - b.number);
+
+    const useDoubles = Math.min(couplesLeft, doubles.length);
+    const useSingles = Math.min(singlesLeft, singles.length);
+    if (useDoubles === 0 && useSingles === 0) continue;
+
+    chosen.push(...doubles.slice(0, useDoubles), ...singles.slice(0, useSingles));
+    keysUsed.push(key);
+    couplesLeft -= useDoubles;
+    singlesLeft -= useSingles;
+  }
+
+  if (couplesLeft > 0 || singlesLeft > 0) return null;
+  return { rooms: chosen, keysUsed };
+}
+
 export function assignNearbyPartyRooms(
   stays: GuestStay[],
   checkIn: string,
@@ -75,7 +118,9 @@ export function assignNearbyPartyRooms(
   singlesCount: number,
   excludeStayId?: string,
 ): PartyRoomPlan | null {
-  const available = getAvailableRooms(stays, checkIn, checkOut, excludeStayId);
+  const available = getAvailableRooms(stays, checkIn, checkOut, excludeStayId).filter(
+    (r) => r.id !== "106",
+  );
 
   const bySection = new Map<string, { doubles: Room[]; singles: Room[] }>();
   for (const r of available) {
@@ -97,12 +142,21 @@ export function assignNearbyPartyRooms(
     }
   }
 
-  if (!best) return null;
+  if (best) {
+    return {
+      roomIds: best.rooms.map((r) => r.id),
+      rooms: best.rooms,
+      sectionTitle: sectionTitleFor(best.key),
+    };
+  }
+
+  const crossSection = planAcrossSections(bySection, couplesCount, singlesCount);
+  if (!crossSection) return null;
 
   return {
-    roomIds: best.rooms.map((r) => r.id),
-    rooms: best.rooms,
-    sectionTitle: sectionTitleFor(best.key),
+    roomIds: crossSection.rooms.map((r) => r.id),
+    rooms: crossSection.rooms,
+    sectionTitle: crossSection.keysUsed.map(sectionTitleFor).join(" + "),
   };
 }
 

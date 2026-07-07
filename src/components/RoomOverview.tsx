@@ -2,16 +2,18 @@ import { useMemo } from "react";
 import type { GuestStay } from "../types";
 import { ROOMS, ROOM_SECTIONS } from "../data/rooms";
 import { getDayOccupancy } from "../roomAvailability";
-import { stayDisplayName } from "../stayUtils";
+import { stayDisplayName, stayMatchesQuery } from "../stayUtils";
 import { formatDateIt, todayIso } from "../utils";
 
 type Props = {
   stays: GuestStay[];
   day?: string;
+  searchQuery?: string;
 };
 
-export function RoomOverview({ stays, day = todayIso() }: Props) {
+export function RoomOverview({ stays, day = todayIso(), searchQuery = "" }: Props) {
   const byRoom = useMemo(() => getDayOccupancy(stays, day).stayByRoom, [stays, day]);
+  const q = searchQuery.trim().toLowerCase();
 
   return (
     <section className="panel">
@@ -34,10 +36,15 @@ export function RoomOverview({ stays, day = todayIso() }: Props) {
             <div className="room-grid">
               {sectionRooms.map((room) => {
                 const guest = byRoom.get(room.id);
+                const matches =
+                  !q ||
+                  room.number.toString().includes(q) ||
+                  room.label.toLowerCase().includes(q) ||
+                  (guest && stayMatchesQuery(guest, q));
                 return (
                   <div
                     key={room.id}
-                    className={`${guest ? "room occupied" : "room free"}${room.large ? " room-large" : ""}`}
+                    className={`${guest ? "room occupied" : "room free room-free-compact"}${room.large ? " room-large" : ""}${q && !matches ? " room-search-dim" : ""}${q && matches ? " room-search-hit" : ""}`}
                     title={
                       guest
                         ? `${guest.guestName} · dal ${formatDateIt(guest.checkIn)} al ${formatDateIt(guest.checkOut)}`

@@ -48,6 +48,34 @@ export function mealPersonCount(stay: GuestStay, meal: "lunch" | "dinner"): numb
   return getPersonCount(stay);
 }
 
+export function stayMatchesQuery(stay: GuestStay, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    stay.guestName,
+    stay.secondGuestName,
+    stay.guestPhone,
+    stay.guestEmail,
+    stay.intolerances,
+    stay.notes,
+    stay.group?.name,
+    stay.group?.leaderName,
+    stay.group?.leaderPhone,
+    ...(stay.group?.participants?.flatMap((p) => [p.name, p.intolerances, p.inRoomWith, p.roomId]) ?? []),
+    ...getStayRoomIds(stay),
+    stayRoomsLabel(stay),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
+export function filterStaysByQuery(stays: GuestStay[], query: string): GuestStay[] {
+  if (!query.trim()) return stays;
+  return stays.filter((s) => stayMatchesQuery(s, query));
+}
+
 /** Normalizza campi multi-camera su registrazioni salvate prima dell'aggiornamento. */
 export function normalizeStay(stay: GuestStay): GuestStay {
   const roomIds = getStayRoomIds(stay);

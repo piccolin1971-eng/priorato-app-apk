@@ -19,6 +19,13 @@ export interface GroupInfo {
   name: string;
   leaderName: string;
   leaderPhone?: string;
+  participants?: {
+    name: string;
+    roomId: string;
+    roomType?: "single" | "double";
+    inRoomWith?: string;
+    intolerances?: string;
+  }[];
 }
 
 export type RegistrationKind = "single" | "double" | "party" | "group";

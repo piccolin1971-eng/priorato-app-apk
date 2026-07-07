@@ -10,14 +10,16 @@ import { PlanningView } from "./components/PlanningView";
 import { PrintReportPanel } from "./components/PrintReportPanel";
 import { FontZoomButtons } from "./components/FontZoomButtons";
 import { SettingsView } from "./components/SettingsView";
-import { dateToIso, formatDateIt, isoToDate, todayIso } from "./utils";
+import { GuestSearchBar, SearchIcon } from "./components/GuestSearchBar";
+import { useAutoBackup } from "./useAutoBackup";
+import { dateToIso, formatDateIt, formatWeekdayIt, isoToDate, todayIso } from "./utils";
 import "./App.css";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "oggi", label: "Oggi" },
   { id: "registra", label: "Registra" },
   { id: "camere", label: "Camere" },
-  { id: "pianificazione", label: "Occupazione/Disponibilità" },
+  { id: "pianificazione", label: "Occupazione" },
   { id: "stampa", label: "Stampa" },
 ];
 
@@ -55,14 +57,14 @@ function QuickReportDayPicker({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const today = todayIso();
-  const options = useMemo(
-    () => [
+  const options = useMemo(() => {
+    const dayAfterTomorrow = addDays(today, 2);
+    return [
       { id: "oggi", label: "Oggi", iso: today },
       { id: "domani", label: "Domani", iso: addDays(today, 1) },
-      { id: "dopodomani", label: "Dopodomani", iso: addDays(today, 2) },
-    ],
-    [today],
-  );
+      { id: "terzo", label: formatWeekdayIt(dayAfterTomorrow), iso: dayAfterTomorrow },
+    ];
+  }, [today]);
 
   useEffect(() => {
     if (!open) return;
@@ -123,6 +125,10 @@ export default function App() {
   const returnTabRef = useRef<TabId>("oggi");
   const [stays, setStays] = useState<GuestStay[]>(() => loadStays());
   const [reportDay, setReportDay] = useState(todayIso());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useAutoBackup(stays);
 
   function openSettings() {
     if (tab !== "impostazioni") returnTabRef.current = tab;
@@ -159,26 +165,46 @@ export default function App() {
       </header>
 
       {!inSettings && (
-        <nav className="tabs no-print" aria-label="Sezioni">
-          {TABS.map((t) => (
+        <>
+          <nav className="tabs no-print" aria-label="Sezioni">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={tab === t.id ? "tab active" : "tab"}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
             <button
-              key={t.id}
               type="button"
-              className={tab === t.id ? "tab active" : "tab"}
-              onClick={() => setTab(t.id)}
+              className={`tab tab-search${searchOpen ? " active" : ""}`}
+              onClick={() => setSearchOpen((open) => !open)}
+              title="Cerca ospiti"
+              aria-label="Cerca ospiti"
+              aria-expanded={searchOpen}
             >
-              {t.label}
+              <SearchIcon />
             </button>
-          ))}
-        </nav>
+          </nav>
+          {searchOpen && (
+            <div className="tab-search-panel no-print">
+              <GuestSearchBar value={searchQuery} onChange={setSearchQuery} />
+            </div>
+          )}
+        </>
       )}
 
       <main className="main">
-        {inSettings && <SettingsView onBack={closeSettings} />}
+        {inSettings && (
+          <SettingsView stays={stays} onStaysChange={setStays} onBack={closeSettings} />
+        )}
         {!inSettings && tab === "oggi" && (
           <TodayReport
             stays={stays}
             day={reportDay}
+            searchQuery={searchQuery}
             onChange={setStays}
             onOpenRooms={() => setTab("camere")}
           />
@@ -187,7 +213,7 @@ export default function App() {
           <RegistrationForm stays={stays} onSaved={setStays} />
         )}
         {!inSettings && tab === "camere" && (
-          <RoomOverview stays={stays} day={reportDay} />
+          <RoomOverview stays={stays} day={reportDay} searchQuery={searchQuery} />
         )}
         {!inSettings && tab === "pianificazione" && (
           <PlanningView stays={stays} day={reportDay} />
