@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BoardType, GuestStay, RegistrationKind } from "../types";
 import { assignNearbyPartyRooms, partyPeopleAndRooms } from "../assignNearbyRooms";
-import { getAvailableRooms, findRoomOverlaps, formatOverlapMessage } from "../roomAvailability";
+import { getAvailableRooms, findRoomOverlaps, formatOverlapMessage, TOTAL_ROOMS } from "../roomAvailability";
 import { deleteStay, updateStay } from "../storage";
 import { getPersonCount, getStayRoomIds, stayDisplayName, stayRoomsLabel } from "../stayUtils";
 import { useSettings } from "../SettingsContext";
@@ -162,12 +162,12 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
   const partySelectionOk = useMemo(() => {
     if (form.mode !== "party") return true;
     if (!partyLayout.valid) return false;
+    if ((partyPlan?.roomsShortage ?? 0) > 0) return false;
     if (partySelectedRoomIds.length !== partyLayout.roomsNeeded) return false;
     const selected = partyAvailableRooms.filter((r) => partySelectedRoomIds.includes(r.id));
     const doubles = selected.filter((r) => r.bedType === "double").length;
-    const singles = selected.filter((r) => r.bedType === "single").length;
-    return doubles >= partyLayout.couplesCount && singles >= partyLayout.singlesCount;
-  }, [form.mode, partyLayout, partySelectedRoomIds, partyAvailableRooms]);
+    return doubles >= partyLayout.couplesCount;
+  }, [form.mode, partyLayout, partySelectedRoomIds, partyAvailableRooms, partyPlan]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -326,7 +326,7 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
             <div className="card inset">
               <label>Primo ospite / referente *<input value={form.guestName} onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))} /></label>
               <div className="grid two">
-                <label>Altre persone<input type="number" min={1} value={form.partyExtra} onChange={(e) => setForm((f) => ({ ...f, partyExtra: Math.max(0, Number(e.target.value) || 0) }))} /></label>
+                <label>Altre persone<input type="number" min={0} max={TOTAL_ROOMS - 1} value={form.partyExtra} onChange={(e) => setForm((f) => ({ ...f, partyExtra: Math.min(TOTAL_ROOMS - 1, Math.max(0, Number(e.target.value) || 0)) }))} /></label>
                 <label>Coppie in doppia<input type="number" min={0} max={Math.floor(totalPeople / 2)} value={form.partyCouples} onChange={(e) => setForm((f) => ({ ...f, partyCouples: Math.max(0, Number(e.target.value) || 0) }))} /></label>
               </div>
               <p className="muted">Camere attuali: {getStayRoomIds(stay).join(", ")} · nuove: {partyPlan?.rooms.map((r) => r.number).join(", ") ?? "—"}</p>

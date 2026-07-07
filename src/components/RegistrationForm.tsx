@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BoardType, GuestStay, RegistrationKind } from "../types";
 import { addStay } from "../storage";
-import { assignNearbyPartyRooms, partyPeopleAndRooms } from "../assignNearbyRooms";
-import { getAvailableRooms, pickFirstFreeRoom, findRoomOverlaps, formatOverlapMessage } from "../roomAvailability";
+import { assignNearbyPartyRooms, formatPartyRoomList, partyPeopleAndRooms } from "../assignNearbyRooms";
+import { getAvailableRooms, pickFirstFreeRoom, findRoomOverlaps, formatOverlapMessage, TOTAL_ROOMS } from "../roomAvailability";
 import { boardLabel, dateToIso, defaultMeals, isoToDate, newId, todayIso } from "../utils";
 import { DateInput } from "./DateInput";
 
@@ -187,12 +187,12 @@ export function RegistrationForm({ stays, onSaved }: Props) {
   const partySelectionOk = useMemo(() => {
     if (form.mode !== "party") return true;
     if (!partyLayout.valid) return false;
+    if (partyPlan && partyPlan.roomsShortage > 0) return false;
     if (partySelectedRoomIds.length !== partyLayout.roomsNeeded) return false;
     const selected = partyAvailableRooms.filter((r) => partySelectedRoomIds.includes(r.id));
     const doubles = selected.filter((r) => r.bedType === "double").length;
-    const singles = selected.filter((r) => r.bedType === "single").length;
-    return doubles >= partyLayout.couplesCount && singles >= partyLayout.singlesCount;
-  }, [form.mode, partyLayout, partySelectedRoomIds, partyAvailableRooms]);
+    return doubles >= partyLayout.couplesCount;
+  }, [form.mode, partyLayout, partySelectedRoomIds, partyAvailableRooms, partyPlan]);
 
   function setBoard(board: BoardType) {
     const meals = defaultMeals(board);
@@ -638,12 +638,15 @@ export function RegistrationForm({ stays, onSaved }: Props) {
                 <input
                   type="number"
                   min={1}
-                  max={30}
+                  max={TOTAL_ROOMS - 1}
                   value={form.partyExtra}
                   onChange={(e) =>
                     setForm((f) => ({
                       ...f,
-                      partyExtra: Math.max(0, Number(e.target.value) || 0),
+                      partyExtra: Math.min(
+                        TOTAL_ROOMS - 1,
+                        Math.max(0, Number(e.target.value) || 0),
+                      ),
                     }))
                   }
                 />
@@ -670,16 +673,20 @@ export function RegistrationForm({ stays, onSaved }: Props) {
               </label>
             </div>
             {datesValid && partyLayout.valid && (
-              <p className={`party-plan-preview${partyPlan ? "" : " warn-text"}`}>
-                {partyPlan
-                  ? `Camere proposte (${partyPlan.sectionTitle}): ${partyPlan.rooms.map((r) => r.number).join(", ")}`
-                  : "Camere insufficienti o non raggruppabili nello stesso blocco."}
+              <p className={`party-plan-preview${partyPlan && partyPlan.roomsShortage === 0 ? "" : " warn-text"}`}>
+                {!partyPlan
+                  ? `Non ci sono camere sufficienti per ${partyLayout.roomsNeeded} posti nelle date scelte.`
+                  : partyPlan.roomsShortage > 0
+                    ? `Sistemate ${partyPlan.rooms.length} camere su ${partyLayout.roomsNeeded} richieste — mancano ancora ${partyPlan.roomsShortage} camere.`
+                    : partyPlan.usesMultipleBlocks
+                      ? `Camere proposte su più blocchi (${partyPlan.sectionTitle}): ${formatPartyRoomList(partyPlan.rooms)}`
+                      : `Camere proposte (${partyPlan.sectionTitle}): ${formatPartyRoomList(partyPlan.rooms)}`}
               </p>
             )}
-            {datesValid && partyLayout.valid && partyPlan && partyPlan.sectionTitle.includes("+") && (
+            {datesValid && partyLayout.valid && partyPlan && partyPlan.usesMultipleBlocks && partyPlan.roomsShortage === 0 && (
               <p className="party-plan-note warn-text">
-                Il gruppo sarà distribuito su più blocchi/piani ({partyPlan.sectionTitle}). Controlla le
-                camere selezionate prima di salvare.
+                Il gruppo non sta in un solo blocco: distribuito su {partyPlan.sectionTitle}. Puoi
+                modificare le camere proposte se serve (scale/ascensori).
               </p>
             )}
             {datesValid && partyLayout.valid && partyAvailableRooms.length > 0 && (
