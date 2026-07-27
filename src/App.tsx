@@ -1,17 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { it } from "react-day-picker/locale";
 import type { GuestStay, TabId } from "./types";
+import { isSessionUnlocked } from "./appLock";
 import { loadStays } from "./storage";
 import { RegistrationForm } from "./components/RegistrationForm";
 import { TodayReport } from "./components/TodayReport";
 import { RoomOverview } from "./components/RoomOverview";
 import { PlanningView } from "./components/PlanningView";
 import { PrintReportPanel } from "./components/PrintReportPanel";
+import { ScheduledReportDueHost } from "./components/ScheduledReportDueHost";
 import { FontZoomButtons } from "./components/FontZoomButtons";
 import { SettingsView } from "./components/SettingsView";
 import { GuestSearchBar, SearchIcon } from "./components/GuestSearchBar";
+import { GuestSearchResults } from "./components/GuestSearchResults";
+import { EditStayModal } from "./components/EditStayModal";
+import { AppLockScreen } from "./components/AppLockScreen";
+import { DbChangeBanner } from "./components/DbChangeBanner";
 import { useAutoBackup } from "./useAutoBackup";
+import { useDbChangeNotify } from "./useDbChangeNotify";
+import { useSettings } from "./SettingsContext";
+import { filterStaysByQuery } from "./stayUtils";
 import { dateToIso, formatDateIt, formatWeekdayIt, isoToDate, todayIso } from "./utils";
 import "./App.css";
 
@@ -121,14 +130,34 @@ function QuickReportDayPicker({
 }
 
 export default function App() {
+  const { appLockEnabled, appLockPassword } = useSettings();
+
+  if (appLockEnabled && appLockPassword && !isSessionUnlocked()) {
+    return <AppLockScreen />;
+  }
+
+  return <AppMain />;
+}
+
+function AppMain() {
   const [tab, setTab] = useState<TabId>("oggi");
   const returnTabRef = useRef<TabId>("oggi");
   const [stays, setStays] = useState<GuestStay[]>(() => loadStays());
   const [reportDay, setReportDay] = useState(todayIso());
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [searchOpen, setSearchOpen] = useState(true);
+  const [searchEditing, setSearchEditing] = useState<GuestStay | null>(null);
 
   useAutoBackup(stays);
+
+  const reloadStays = useCallback(() => setStays(loadStays()), []);
+  const dbNotify = useDbChangeNotify({ onReloadStays: reloadStays });
+
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    return filterStaysByQuery(stays, searchQuery).slice(0, 20);
+  }, [stays, searchQuery]);
 
   function openSettings() {
     if (tab !== "impostazioni") returnTabRef.current = tab;
@@ -139,10 +168,46 @@ export default function App() {
     setTab(returnTabRef.current);
   }
 
+  function runSearch() {
+    setSearchQuery(searchDraft.trim());
+    setSearchOpen(true);
+    if (tab !== "oggi" && tab !== "camere") setTab("oggi");
+  }
+
+  function clearSearch() {
+    setSearchDraft("");
+    setSearchQuery("");
+  }
+
+  function handleSearchSelect(stay: GuestStay) {
+    setSearchEditing(stay);
+    setTab("oggi");
+  }
+
   const inSettings = tab === "impostazioni";
 
   return (
     <div className="app">
+      {searchEditing && (
+        <EditStayModal
+          stay={searchEditing}
+          stays={stays}
+          onClose={() => setSearchEditing(null)}
+          onSaved={(next) => {
+            setStays(next);
+            setSearchEditing(null);
+          }}
+        />
+      )}
+
+      {dbNotify.showBanner && (
+        <DbChangeBanner
+          summary={dbNotify.bannerSummary}
+          onAcknowledge={dbNotify.acknowledge}
+          onReload={dbNotify.reloadAndAcknowledge}
+        />
+      )}
+
       <header className="topbar no-print">
         <h1 className="app-title">Priorato</h1>
         <div className="topbar-actions">
@@ -181,8 +246,8 @@ export default function App() {
               type="button"
               className={`tab tab-search${searchOpen ? " active" : ""}`}
               onClick={() => setSearchOpen((open) => !open)}
-              title="Cerca ospiti"
-              aria-label="Cerca ospiti"
+              title="Mostra o nascondi ricerca"
+              aria-label="Ricerca ospiti"
               aria-expanded={searchOpen}
             >
               <SearchIcon />
@@ -190,7 +255,22 @@ export default function App() {
           </nav>
           {searchOpen && (
             <div className="tab-search-panel no-print">
-              <GuestSearchBar value={searchQuery} onChange={setSearchQuery} />
+              <GuestSearchBar
+                value={searchQuery}
+                draft={searchDraft}
+                onDraftChange={setSearchDraft}
+                onSearch={runSearch}
+                onClear={clearSearch}
+              />
+              {searchQuery && (
+                <div className="search-results-panel">
+                  <p className="muted small-hint">
+                    {searchResults.length} risultat{searchResults.length === 1 ? "o" : "i"} — clicca
+                    per modificare
+                  </p>
+                  <GuestSearchResults results={searchResults} onSelect={handleSearchSelect} />
+                </div>
+              )}
             </div>
           )}
         </>
@@ -222,6 +302,8 @@ export default function App() {
           <PrintReportPanel stays={stays} defaultDate={reportDay} />
         )}
       </main>
+
+      <ScheduledReportDueHost stays={stays} />
 
       {!inSettings && (
         <footer className="footer no-print">

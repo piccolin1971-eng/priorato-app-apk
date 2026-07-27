@@ -1,13 +1,14 @@
 import type { GuestStay } from "./types";
 import { ROOMS, normalizeRoomId } from "./data/rooms";
+import { mealPersonCountOnDay } from "./mealTiming";
 
 /** Tutte le camere occupate da una registrazione (anche multi-camera). */
 export function getStayRoomIds(stay: GuestStay): string[] {
   const ids = stay.roomIds?.length
     ? stay.roomIds
-  : stay.roomId
-    ? [stay.roomId]
-    : [];
+    : stay.roomId
+      ? [stay.roomId]
+      : [];
   return [...new Set(ids.map(normalizeRoomId).filter(Boolean))];
 }
 
@@ -24,6 +25,13 @@ export function stayDisplayName(stay: GuestStay): string {
     return `${stay.guestName} + ${stay.secondGuestName.trim()}`;
   }
   const n = getPersonCount(stay);
+  if (stay.group?.name && n > 1) {
+    const leader = stay.group.leaderName?.trim();
+    const base = leader && leader !== stay.guestName.trim()
+      ? `${stay.group.name} — ${stay.guestName}`
+      : stay.group.name;
+    return `${base} (${n} persone)`;
+  }
   if (n > 1) return `${stay.guestName} (${n} persone)`;
   return stay.guestName;
 }
@@ -42,7 +50,12 @@ export function stayRoomsLabel(stay: GuestStay): string {
   return `Camere ${roomParts.join(", ")}`;
 }
 
-export function mealPersonCount(stay: GuestStay, meal: "lunch" | "dinner"): number {
+export function mealPersonCount(
+  stay: GuestStay,
+  meal: "lunch" | "dinner",
+  day?: string,
+): number {
+  if (day) return mealPersonCountOnDay(stay, day, meal);
   const included = meal === "lunch" ? stay.lunch : stay.dinner;
   if (!included) return 0;
   return getPersonCount(stay);

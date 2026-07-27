@@ -1,8 +1,54 @@
 type Props = {
   value: string;
-  onChange: (value: string) => void;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSearch: () => void;
+  onClear: () => void;
   placeholder?: string;
 };
+
+export function GuestSearchBar({
+  value,
+  draft,
+  onDraftChange,
+  onSearch,
+  onClear,
+  placeholder = "Cerca ospite, gruppo, camera…",
+}: Props) {
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onSearch();
+  }
+
+  return (
+    <form className="guest-search" onSubmit={handleSubmit}>
+      <span className="guest-search-icon" aria-hidden>
+        <SearchIcon />
+      </span>
+      <input
+        type="search"
+        className="guest-search-input"
+        value={draft}
+        onChange={(e) => onDraftChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label="Cerca ospiti"
+      />
+      <button type="submit" className="btn primary small guest-search-submit">
+        Cerca
+      </button>
+      {(value || draft) && (
+        <button
+          type="button"
+          className="guest-search-clear"
+          onClick={onClear}
+          aria-label="Cancella ricerca"
+        >
+          ✕
+        </button>
+      )}
+    </form>
+  );
+}
 
 export function SearchIcon() {
   return (
@@ -10,37 +56,5 @@ export function SearchIcon() {
       <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
       <path d="M16 16l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
-  );
-}
-
-export function GuestSearchBar({
-  value,
-  onChange,
-  placeholder = "Cerca ospite, gruppo, camera…",
-}: Props) {
-  return (
-    <label className="guest-search">
-      <span className="guest-search-icon" aria-hidden>
-        <SearchIcon />
-      </span>
-      <input
-        type="search"
-        className="guest-search-input"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-label="Cerca ospiti"
-      />
-      {value && (
-        <button
-          type="button"
-          className="guest-search-clear"
-          onClick={() => onChange("")}
-          aria-label="Cancella ricerca"
-        >
-          ✕
-        </button>
-      )}
-    </label>
   );
 }

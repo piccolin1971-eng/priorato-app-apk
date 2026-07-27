@@ -1,14 +1,18 @@
 import { ROOMS } from "./data/rooms";
 import { getDayOccupancy, TOTAL_ROOMS } from "./roomAvailability";
 import type { GuestStay } from "./types";
+import { hasIntoleranceInfo } from "./intolerances";
+import { mealIncludedOnDay } from "./mealTiming";
 import { getPersonCount, mealPersonCount } from "./stayUtils";
-import { dateToIso, formatDateIt, isActiveOn, isoToDate, mealIncluded } from "./utils";
+import { dateToIso, formatDateIt, isActiveOn, isoToDate } from "./utils";
 
-export type ReportPeriod = "day" | "week" | "month";
+export type ReportPeriod = "day" | "week" | "month" | "range";
 
 export type PrintReportOptions = {
   period: ReportPeriod;
   anchorDate: string;
+  /** Giorni consecutivi se period === "range" (min 2). */
+  rangeDayCount?: number;
   includeSummary: boolean;
   includeGuestList: boolean;
   includeContact: boolean;
@@ -16,7 +20,8 @@ export type PrintReportOptions = {
   includeMeals: boolean;
   includeIntolerances: boolean;
   includeGroups: boolean;
-  includeArrivalsDepartures: boolean;
+  includeArrivals: boolean;
+  includeDepartures: boolean;
   includeNotes: boolean;
   includeHistoryStats: boolean;
 };
@@ -44,11 +49,26 @@ export type BuiltPrintReport = {
   options: PrintReportOptions;
 };
 
-export function getPeriodDays(period: ReportPeriod, anchor: string): string[] {
+export function getPeriodDays(
+  period: ReportPeriod,
+  anchor: string,
+  rangeDayCount = 2,
+): string[] {
   const d = isoToDate(anchor);
   if (!d) return [];
 
   if (period === "day") return [anchor];
+
+  if (period === "range") {
+    const count = Math.max(2, Math.min(31, rangeDayCount | 0 || 2));
+    const days: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const cur = new Date(d);
+      cur.setDate(d.getDate() + i);
+      days.push(dateToIso(cur));
+    }
+    return days;
+  }
 
   if (period === "week") {
     const monday = new Date(d);
@@ -77,6 +97,9 @@ function periodTitle(period: ReportPeriod, anchor: string, days: string[]): stri
   if (period === "week") {
     return `Report settimana ${formatDateIt(days[0] ?? anchor)} – ${formatDateIt(days[days.length - 1] ?? anchor)}`;
   }
+  if (period === "range") {
+    return `Report ${formatDateIt(days[0] ?? anchor)} – ${formatDateIt(days[days.length - 1] ?? anchor)}`;
+  }
   const d = isoToDate(anchor);
   if (!d) return "Report mensile";
   const months = [
@@ -94,14 +117,14 @@ function buildDaySnapshot(stays: GuestStay[], day: string): DaySnapshot {
     occupancy: occupancy.occupiedCount,
     free: occupancy.freeCount,
     peopleInHouse: inHouse.reduce((n, s) => n + getPersonCount(s), 0),
-    lunchPeople: inHouse.reduce((n, s) => n + mealPersonCount(s, "lunch"), 0),
-    dinnerPeople: inHouse.reduce((n, s) => n + mealPersonCount(s, "dinner"), 0),
+    lunchPeople: inHouse.reduce((n, s) => n + mealPersonCount(s, "lunch", day), 0),
+    dinnerPeople: inHouse.reduce((n, s) => n + mealPersonCount(s, "dinner", day), 0),
     inHouse,
     arrivals: stays.filter((s) => s.checkIn === day),
     departures: stays.filter((s) => s.checkOut === day),
-    lunch: inHouse.filter((s) => mealIncluded(s, "lunch")),
-    dinner: inHouse.filter((s) => mealIncluded(s, "dinner")),
-    intolerances: inHouse.filter((s) => s.intolerances.trim()),
+    lunch: inHouse.filter((s) => mealIncludedOnDay(s, day, "lunch")),
+    dinner: inHouse.filter((s) => mealIncludedOnDay(s, day, "dinner")),
+    intolerances: inHouse.filter((s) => hasIntoleranceInfo(s)),
   };
 }
 
@@ -109,7 +132,7 @@ export function buildPrintReport(
   stays: GuestStay[],
   options: PrintReportOptions,
 ): BuiltPrintReport {
-  const days = getPeriodDays(options.period, options.anchorDate);
+  const days = getPeriodDays(options.period, options.anchorDate, options.rangeDayCount);
   const snapshots = days.map((day) => buildDaySnapshot(stays, day));
   return {
     title: periodTitle(options.period, options.anchorDate, days),
@@ -118,7 +141,9 @@ export function buildPrintReport(
         ? "Giornaliero"
         : options.period === "week"
           ? "Settimanale"
-          : "Mensile",
+          : options.period === "range"
+            ? `${days.length} giorni`
+            : "Mensile",
     days,
     snapshots,
     options,
@@ -203,7 +228,8 @@ export const DEFAULT_PRINT_OPTIONS: PrintReportOptions = {
   includeMeals: true,
   includeIntolerances: true,
   includeGroups: true,
-  includeArrivalsDepartures: true,
+  includeArrivals: true,
+  includeDepartures: true,
   includeNotes: false,
   includeHistoryStats: false,
 };

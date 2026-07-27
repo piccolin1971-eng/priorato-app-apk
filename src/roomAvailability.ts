@@ -1,5 +1,6 @@
 import type { GuestStay, Room } from "./types";
 import { ROOMS, normalizeRoomId } from "./data/rooms";
+import { pickDefaultRoom } from "./roomSelect";
 import { getStayRoomIds, stayDisplayName } from "./stayUtils";
 import { dateToIso, isActiveOn, isoToDate, staysOverlap } from "./utils";
 
@@ -41,7 +42,7 @@ export function pickFirstFreeRoom(
   bedType?: Room["bedType"],
 ): string {
   const rooms = getAvailableRooms(stays, checkIn, checkOut, undefined, bedType);
-  return rooms.find((r) => r.id !== "106")?.id ?? rooms[0]?.id ?? "";
+  return pickDefaultRoom(rooms);
 }
 
 export function countOccupiedOnDay(stays: GuestStay[], day: string): number {

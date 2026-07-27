@@ -1,4 +1,6 @@
 import type { GuestStay } from "./types";
+import { recordDbChange } from "./dbMeta";
+import { getDeviceName } from "./device";
 import { loadStays, saveStays } from "./storage";
 
 export const BACKUP_VERSION = 1;
@@ -9,6 +11,7 @@ export type BackupBundle = {
   exportedAt: string;
   stays: GuestStay[];
   app: "priorato";
+  exportedByDevice?: string;
 };
 
 export type AutoBackupIntervalHours = 6 | 12 | 24 | 168;
@@ -26,6 +29,7 @@ export function createBackupBundle(stays: GuestStay[]): BackupBundle {
     exportedAt: new Date().toISOString(),
     stays,
     app: "priorato",
+    exportedByDevice: getDeviceName(),
   };
 }
 
@@ -70,8 +74,10 @@ export function importBackupStays(
   bundle: BackupBundle,
   mode: ImportMode,
 ): GuestStay[] {
+  const importDevice = bundle.exportedByDevice?.trim() || "altro dispositivo";
   if (mode === "replace") {
     saveStays(bundle.stays);
+    recordDbChange({ action: "import", deviceName: importDevice });
     return loadStays();
   }
   const current = loadStays();
@@ -79,6 +85,7 @@ export function importBackupStays(
   for (const stay of bundle.stays) byId.set(stay.id, stay);
   const merged = [...byId.values()];
   saveStays(merged);
+  recordDbChange({ action: "import", deviceName: importDevice });
   return merged;
 }
 

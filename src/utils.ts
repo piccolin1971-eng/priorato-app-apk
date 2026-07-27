@@ -1,4 +1,5 @@
 import type { BoardType, GuestStay } from "./types";
+import { mealIncludedOnDay } from "./mealTiming";
 
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -82,7 +83,8 @@ export function defaultMeals(board: BoardType): { lunch: boolean; dinner: boolea
   }
 }
 
-export function mealIncluded(stay: GuestStay, meal: "lunch" | "dinner"): boolean {
+export function mealIncluded(stay: GuestStay, meal: "lunch" | "dinner", day?: string): boolean {
+  if (day) return mealIncludedOnDay(stay, day, meal);
   return meal === "lunch" ? stay.lunch : stay.dinner;
 }
 

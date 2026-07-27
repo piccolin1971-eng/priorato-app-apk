@@ -7,6 +7,11 @@ import {
   type ReactNode,
 } from "react";
 import type { AutoBackupIntervalHours } from "./backup";
+import { loadDbMeta } from "./dbMeta";
+import {
+  pruneLastSentKeys,
+  type ReportSendProfile,
+} from "./reportProfiles";
 
 export type ThemeMode = "light" | "dark" | "parchment";
 
@@ -29,6 +34,16 @@ export type StoredSettings = {
   googleDriveConnected?: boolean;
   googleDriveAccountEmail?: string;
   confirmBeforeDelete?: boolean;
+  appLockEnabled?: boolean;
+  appLockPassword?: string;
+  deviceName?: string;
+  changeNotifyEnabled?: boolean;
+  changeNotifyOnStart?: boolean;
+  changeNotifyWhileUsing?: boolean;
+  lastSeenDbRevision?: number;
+  staffEmails?: string[];
+  reportProfiles?: ReportSendProfile[];
+  reportProfileLastSent?: string[];
 };
 
 type SettingsState = {
@@ -43,6 +58,26 @@ type SettingsState = {
   googleDriveConnected: boolean;
   googleDriveAccountEmail: string;
   confirmBeforeDelete: boolean;
+  appLockEnabled: boolean;
+  appLockPassword: string;
+  deviceName: string;
+  changeNotifyEnabled: boolean;
+  changeNotifyOnStart: boolean;
+  changeNotifyWhileUsing: boolean;
+  lastSeenDbRevision: number;
+  staffEmails: string[];
+  reportProfiles: ReportSendProfile[];
+  reportProfileLastSent: string[];
+  setStaffEmails: (emails: string[]) => void;
+  setReportProfiles: (profiles: ReportSendProfile[]) => void;
+  markReportProfileSent: (slotKey: string) => void;
+  setDeviceName: (name: string) => void;
+  setChangeNotifyEnabled: (enabled: boolean) => void;
+  setChangeNotifyOnStart: (enabled: boolean) => void;
+  setChangeNotifyWhileUsing: (enabled: boolean) => void;
+  setLastSeenDbRevision: (revision: number) => void;
+  setAppLockEnabled: (enabled: boolean) => void;
+  setAppLockPassword: (password: string) => void;
   setTheme: (theme: ThemeMode) => void;
   setFontSize: (size: number) => void;
   setParchmentShade: (value: number) => void;
@@ -110,6 +145,16 @@ function toPersist(state: {
   googleDriveConnected: boolean;
   googleDriveAccountEmail: string;
   confirmBeforeDelete: boolean;
+  appLockEnabled: boolean;
+  appLockPassword: string;
+  deviceName: string;
+  changeNotifyEnabled: boolean;
+  changeNotifyOnStart: boolean;
+  changeNotifyWhileUsing: boolean;
+  lastSeenDbRevision: number;
+  staffEmails: string[];
+  reportProfiles: ReportSendProfile[];
+  reportProfileLastSent: string[];
 }): StoredSettings {
   return { ...state };
 }
@@ -149,6 +194,34 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [confirmBeforeDelete, setConfirmBeforeDeleteState] = useState(
     () => initial.confirmBeforeDelete ?? true,
   );
+  const [appLockEnabled, setAppLockEnabledState] = useState(
+    () => initial.appLockEnabled ?? false,
+  );
+  const [appLockPassword, setAppLockPasswordState] = useState(
+    () => initial.appLockPassword ?? "",
+  );
+  const [deviceName, setDeviceNameState] = useState(() => initial.deviceName ?? "");
+  const [changeNotifyEnabled, setChangeNotifyEnabledState] = useState(
+    () => initial.changeNotifyEnabled ?? true,
+  );
+  const [changeNotifyOnStart, setChangeNotifyOnStartState] = useState(
+    () => initial.changeNotifyOnStart ?? true,
+  );
+  const [changeNotifyWhileUsing, setChangeNotifyWhileUsingState] = useState(
+    () => initial.changeNotifyWhileUsing ?? true,
+  );
+  const [lastSeenDbRevision, setLastSeenDbRevisionState] = useState(
+    () => initial.lastSeenDbRevision ?? loadDbMeta().revision,
+  );
+  const [staffEmails, setStaffEmailsState] = useState<string[]>(
+    () => initial.staffEmails ?? [],
+  );
+  const [reportProfiles, setReportProfilesState] = useState<ReportSendProfile[]>(
+    () => initial.reportProfiles ?? [],
+  );
+  const [reportProfileLastSent, setReportProfileLastSentState] = useState<string[]>(
+    () => pruneLastSentKeys(initial.reportProfileLastSent ?? []),
+  );
 
   useEffect(() => {
     applyDocument(theme, fontSize, parchmentShade);
@@ -165,6 +238,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         googleDriveConnected,
         googleDriveAccountEmail,
         confirmBeforeDelete,
+        appLockEnabled,
+        appLockPassword,
+        deviceName,
+        changeNotifyEnabled,
+        changeNotifyOnStart,
+        changeNotifyWhileUsing,
+        lastSeenDbRevision,
+        staffEmails,
+        reportProfiles,
+        reportProfileLastSent,
       }),
     );
   }, [
@@ -179,6 +262,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     googleDriveConnected,
     googleDriveAccountEmail,
     confirmBeforeDelete,
+    appLockEnabled,
+    appLockPassword,
+    deviceName,
+    changeNotifyEnabled,
+    changeNotifyOnStart,
+    changeNotifyWhileUsing,
+    lastSeenDbRevision,
+    staffEmails,
+    reportProfiles,
+    reportProfileLastSent,
   ]);
 
   const setTheme = (next: ThemeMode) => setThemeState(next);
@@ -195,6 +288,21 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setGoogleDriveAccountEmailState(email ?? "");
   };
   const setConfirmBeforeDelete = (value: boolean) => setConfirmBeforeDeleteState(value);
+  const setAppLockEnabled = (enabled: boolean) => setAppLockEnabledState(enabled);
+  const setAppLockPassword = (password: string) => setAppLockPasswordState(password);
+  const setDeviceName = (name: string) => setDeviceNameState(name);
+  const setStaffEmails = (emails: string[]) => setStaffEmailsState(emails);
+  const setReportProfiles = (profiles: ReportSendProfile[]) => setReportProfilesState(profiles);
+  const markReportProfileSent = useCallback((key: string) => {
+    setReportProfileLastSentState((prev) => pruneLastSentKeys([...prev.filter((k) => k !== key), key]));
+  }, []);
+  const setChangeNotifyEnabled = (enabled: boolean) => setChangeNotifyEnabledState(enabled);
+  const setChangeNotifyOnStart = (enabled: boolean) => setChangeNotifyOnStartState(enabled);
+  const setChangeNotifyWhileUsing = (enabled: boolean) => setChangeNotifyWhileUsingState(enabled);
+  const setLastSeenDbRevision = useCallback(
+    (revision: number) => setLastSeenDbRevisionState(revision),
+    [],
+  );
   const decreaseFont = () => setFontSizeState((f) => clampFont(f - FONT_STEP));
   const increaseFont = () => setFontSizeState((f) => clampFont(f + FONT_STEP));
 
@@ -212,6 +320,19 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         googleDriveConnected,
         googleDriveAccountEmail,
         confirmBeforeDelete,
+        appLockEnabled,
+        appLockPassword,
+        deviceName,
+        changeNotifyEnabled,
+        changeNotifyOnStart,
+        changeNotifyWhileUsing,
+        lastSeenDbRevision,
+        staffEmails,
+        reportProfiles,
+        reportProfileLastSent,
+        setStaffEmails,
+        setReportProfiles,
+        markReportProfileSent,
         setTheme,
         setFontSize,
         setParchmentShade,
@@ -222,6 +343,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setGoogleDriveFolderId,
         setGoogleDriveConnected,
         setConfirmBeforeDelete,
+        setAppLockEnabled,
+        setAppLockPassword,
+        setDeviceName,
+        setChangeNotifyEnabled,
+        setChangeNotifyOnStart,
+        setChangeNotifyWhileUsing,
+        setLastSeenDbRevision,
         decreaseFont,
         increaseFont,
       }}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { it } from "react-day-picker/locale";
 import type { GuestStay } from "../types";
@@ -14,15 +14,19 @@ import {
   type ReportPeriod,
 } from "../printReport";
 import { downloadSnapshotsCsv } from "../exportCsv";
+import { formatStayIntolerances } from "../intolerances";
+import { generateReportPdf, pdfFilename, sharePdfByEmail } from "../printPdf";
+import { useSettings } from "../SettingsContext";
 import { mealPersonCount, stayDisplayName, stayRoomsLabel } from "../stayUtils";
 import { dateToIso, formatDateIt, formatWeekdayIt, isoToDate, todayIso } from "../utils";
+import { ReportProfilesSection } from "./ReportProfilesSection";
 
 type Props = {
   stays: GuestStay[];
   defaultDate?: string;
 };
 
-type ToggleKey = keyof Omit<PrintReportOptions, "period" | "anchorDate">;
+type ToggleKey = keyof Omit<PrintReportOptions, "period" | "anchorDate" | "rangeDayCount">;
 
 const TOGGLE_GROUPS: {
   title?: string;
@@ -32,9 +36,14 @@ const TOGGLE_GROUPS: {
     items: [
       { key: "includeSummary", label: "Riepilogo numeri", hint: "Ospiti, camere, pasti" },
       {
-        key: "includeArrivalsDepartures",
-        label: "Arrivi e partenze",
-        hint: "Movimenti del giorno",
+        key: "includeArrivals",
+        label: "Arrivi",
+        hint: "Camere da preparare",
+      },
+      {
+        key: "includeDepartures",
+        label: "Partenze",
+        hint: "Camere da pulire",
       },
     ],
   },
@@ -72,10 +81,10 @@ function shiftAnchorDate(anchor: string, period: ReportPeriod, delta: number): s
   return dateToIso(d);
 }
 
-function periodNavLabel(period: ReportPeriod, anchor: string): string {
-  const days = getPeriodDays(period, anchor);
-  if (period === "week") {
-    return `Settimana ${formatDateIt(days[0] ?? anchor)} – ${formatDateIt(days[days.length - 1] ?? anchor)}`;
+function periodNavLabel(period: ReportPeriod, anchor: string, rangeDayCount = 2): string {
+  const days = getPeriodDays(period, anchor, rangeDayCount);
+  if (period === "week" || period === "range") {
+    return `${formatDateIt(days[0] ?? anchor)} – ${formatDateIt(days[days.length - 1] ?? anchor)}`;
   }
   const d = isoToDate(anchor);
   if (!d) return "Mese";
@@ -104,7 +113,7 @@ function GuestPrintRow({
           {!stay.lunch && !stay.dinner && "—"}
         </td>
       )}
-      {options.includeIntolerances && <td>{stay.intolerances.trim() || "—"}</td>}
+      {options.includeIntolerances && <td>{formatStayIntolerances(stay) || "—"}</td>}
       {options.includeGroups && (
         <td>{stay.group ? `${stay.group.name} · ${stay.group.leaderName}` : "—"}</td>
       )}
@@ -114,7 +123,7 @@ function GuestPrintRow({
   );
 }
 
-function PrintPreviewContent({
+export function PrintPreviewContent({
   report,
 }: {
   report: ReturnType<typeof buildPrintReport>;
@@ -259,41 +268,37 @@ function PrintPreviewContent({
 
       {snapshots.map((snap) => (
         <div key={snap.day}>
-          {options.includeArrivalsDepartures &&
-            (snap.arrivals.length > 0 || snap.departures.length > 0) && (
-              <section className="print-section">
-                <h3>
-                  Arrivi e partenze
-                  {!singleDay && ` — ${formatDateIt(snap.day)}`}
-                </h3>
-                {snap.arrivals.length > 0 && (
-                  <>
-                    <h4>Arrivi</h4>
-                    <ul className="print-bullet-list">
-                      {snap.arrivals.map((s) => (
-                        <li key={s.id}>
-                          {stayDisplayName(s)}
-                          {options.includeRooms && ` · ${stayRoomsLabel(s)}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-                {snap.departures.length > 0 && (
-                  <>
-                    <h4>Partenze</h4>
-                    <ul className="print-bullet-list">
-                      {snap.departures.map((s) => (
-                        <li key={s.id}>
-                          {stayDisplayName(s)}
-                          {options.includeRooms && ` · ${stayRoomsLabel(s)}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </section>
-            )}
+          {options.includeArrivals && snap.arrivals.length > 0 && (
+            <section className="print-section print-section-arrivals">
+              <h3>
+                Arrivi — camere da preparare
+                {!singleDay && ` · ${formatDateIt(snap.day)}`}
+              </h3>
+              <ul className="print-bullet-list">
+                {snap.arrivals.map((s) => (
+                  <li key={s.id}>
+                    <strong>{stayRoomsLabel(s)}</strong> · {stayDisplayName(s)}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {options.includeDepartures && snap.departures.length > 0 && (
+            <section className="print-section print-section-departures">
+              <h3>
+                Partenze — camere da pulire
+                {!singleDay && ` · ${formatDateIt(snap.day)}`}
+              </h3>
+              <ul className="print-bullet-list">
+                {snap.departures.map((s) => (
+                  <li key={s.id}>
+                    <strong>{stayRoomsLabel(s)}</strong> · {stayDisplayName(s)}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {showGuestTable && snap.inHouse.length > 0 && (
             <section className="print-section">
@@ -337,7 +342,7 @@ function PrintPreviewContent({
                 <ul className="print-bullet-list">
                   {snap.intolerances.map((s) => (
                     <li key={s.id}>
-                      {s.guestName}: {s.intolerances}
+                      {s.guestName}: {formatStayIntolerances(s)}
                     </li>
                   ))}
                 </ul>
@@ -348,7 +353,8 @@ function PrintPreviewContent({
 
       {!options.includeSummary &&
         !options.includeGuestList &&
-        !options.includeArrivalsDepartures &&
+        !options.includeArrivals &&
+        !options.includeDepartures &&
         !(options.includeHistoryStats && !singleDay) && (
           <p className="print-empty">Seleziona almeno una sezione da includere nel report.</p>
         )}
@@ -357,16 +363,26 @@ function PrintPreviewContent({
 }
 
 export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
+  const { staffEmails } = useSettings();
   const [options, setOptions] = useState<PrintReportOptions>({
     ...DEFAULT_PRINT_OPTIONS,
     anchorDate: defaultDate,
   });
   const [previewOpen, setPreviewOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailStatus, setEmailStatus] = useState("");
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
+  const printAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setOptions((o) => ({ ...o, anchorDate: defaultDate }));
   }, [defaultDate]);
+
+  useEffect(() => {
+    if (emailOpen) setSelectedEmails([...staffEmails]);
+  }, [emailOpen, staffEmails]);
 
   const report = useMemo(() => buildPrintReport(stays, options), [stays, options]);
   const quickDates = useMemo(() => {
@@ -398,6 +414,50 @@ export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
 
   function handleCsv() {
     downloadSnapshotsCsv(report.snapshots, `priorato-report-${options.period}.csv`);
+  }
+
+  function openEmailDialog() {
+    setPreviewOpen(true);
+    setEmailStatus("");
+    setEmailOpen(true);
+  }
+
+  function toggleEmailRecipient(email: string) {
+    setSelectedEmails((prev) =>
+      prev.includes(email) ? prev.filter((e) => e !== email) : [...prev, email],
+    );
+  }
+
+  async function handleSendEmail() {
+    const area = printAreaRef.current;
+    if (!area) {
+      setEmailStatus("Apri l'anteprima e riprova.");
+      return;
+    }
+    if (!selectedEmails.length) {
+      setEmailStatus("Seleziona almeno un destinatario.");
+      return;
+    }
+
+    setEmailBusy(true);
+    setEmailStatus("Generazione PDF…");
+    try {
+      const filename = pdfFilename(report.title);
+      const blob = await generateReportPdf(area, filename);
+      const res = await sharePdfByEmail(
+        blob,
+        filename,
+        selectedEmails,
+        report.title,
+        `Report Priorato — ${report.periodLabel}\n${report.title}`,
+      );
+      setEmailStatus(res.message);
+      if (res.ok) window.setTimeout(() => setEmailOpen(false), 2500);
+    } catch (err) {
+      setEmailStatus(err instanceof Error ? err.message : "Invio non riuscito.");
+    } finally {
+      setEmailBusy(false);
+    }
   }
 
   return (
@@ -555,10 +615,15 @@ export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
           <button type="button" className="btn ghost" onClick={handlePdf}>
             Crea PDF…
           </button>
+          <button type="button" className="btn ghost" onClick={openEmailDialog}>
+            Invia PDF per email…
+          </button>
           <button type="button" className="btn ghost" onClick={handleCsv}>
             Esporta CSV
           </button>
         </div>
+
+        <ReportProfilesSection />
       </div>
 
       {previewOpen && (
@@ -566,8 +631,64 @@ export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
           <p className="muted print-preview-hint no-print">
             Anteprima — usa «Stampa…» o Ctrl+P. In stampa spariscono menu e pulsanti.
           </p>
-          <div className="print-preview" id="print-area">
+          <div className="print-preview" id="print-area" ref={printAreaRef}>
             <PrintPreviewContent report={report} />
+          </div>
+        </div>
+      )}
+
+      {emailOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => !emailBusy && setEmailOpen(false)}>
+          <div
+            className="modal confirm-dialog print-email-dialog"
+            role="dialog"
+            aria-labelledby="print-email-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="print-email-title">Invia report per email</h3>
+            <p className="muted">
+              Viene generato un PDF con le sezioni selezionate e inviato ai dipendenti scelti.
+            </p>
+            {staffEmails.length === 0 ? (
+              <p className="print-email-empty">
+                Nessuna email configurata. Aggiungi i contatti in <strong>Impostazioni → Email dipendenti</strong>.
+              </p>
+            ) : (
+              <ul className="print-email-list">
+                {staffEmails.map((email) => (
+                  <li key={email}>
+                    <label className="print-email-recipient">
+                      <input
+                        type="checkbox"
+                        checked={selectedEmails.includes(email)}
+                        disabled={emailBusy}
+                        onChange={() => toggleEmailRecipient(email)}
+                      />
+                      {email}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {emailStatus && <p className="settings-status">{emailStatus}</p>}
+            <div className="actions">
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={emailBusy}
+                onClick={() => setEmailOpen(false)}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={emailBusy || staffEmails.length === 0 || selectedEmails.length === 0}
+                onClick={handleSendEmail}
+              >
+                {emailBusy ? "Invio…" : "Genera PDF e invia"}
+              </button>
+            </div>
           </div>
         </div>
       )}

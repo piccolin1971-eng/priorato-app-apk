@@ -1,0 +1,29 @@
+PRIORATO — INSTALLAZIONE SU UN ALTRO PC (portineria / segreteria)
+================================================================
+
+1) INSTALLA (una volta sola sul PC)
+   Doppio clic sui collegamenti nella cartella principale:
+   - Scarica Node.js.url
+   - Scarica Google Chrome.url   (opzionale: Edge e gia su Windows 11)
+
+2) COPIA LA CARTELLA DEL PROGETTO
+   Percorso tipico: C:\Priorato\priorato-app
+   (la cartella priorato-app e gia in questo pacchetto)
+
+3) SETUP (una volta sul nuovo PC, in PowerShell o cmd)
+   cd C:\Priorato\priorato-app
+   npm install
+
+4) ICONA SUL DESKTOP
+   Doppio clic su: 2 - Crea icona desktop.bat
+
+5) USO QUOTIDIANO
+   Doppio clic su "Priorato Accoglienza" sul desktop.
+   Chiudendo la finestra dell'app si spegne anche il server.
+
+NOTA DATI
+   I dati restano nel browser di quel PC (localStorage).
+   Per allineare tablet/PC servira il backup o Google Drive (futuro).
+
+AGGIORNAMENTI
+   Sostituisci i file del progetto e rifai npm install se serve.

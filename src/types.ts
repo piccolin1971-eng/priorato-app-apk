@@ -4,6 +4,22 @@ export type Zone = "vecchia" | "nuova";
 
 export type BedType = "single" | "double";
 
+export type IntoleranceTypeId =
+  | "glutine"
+  | "lattosio"
+  | "uova"
+  | "frutta_secca"
+  | "pesce"
+  | "altro";
+
+export type IntoleranceCounts = Partial<Record<IntoleranceTypeId, number>>;
+
+/** Arrivo: per pranzo o per cena. */
+export type ArrivalMeal = "lunch" | "dinner";
+
+/** Partenza: dopo colazione, pranzo o cena. */
+export type DepartureMeal = "after_breakfast" | "after_lunch" | "after_dinner";
+
 export interface Room {
   id: string;
   label: string;
@@ -49,10 +65,19 @@ export interface GuestStay {
   board: BoardType;
   lunch: boolean;
   dinner: boolean;
+  /** Testo libero (singoli/doppie o note aggiuntive). */
   intolerances: string;
+  /** Conteggi per tipo (party/gruppi). */
+  intoleranceCounts?: IntoleranceCounts;
+  arrivalMeal?: ArrivalMeal;
+  departureMeal?: DepartureMeal;
   notes: string;
   group?: GroupInfo;
   createdAt: string;
+  /** Nome postazione alla registrazione (es. Portineria). */
+  registeredByDevice?: string;
+  updatedAt?: string;
+  lastModifiedByDevice?: string;
 }
 
 export type TabId = "oggi" | "registra" | "camere" | "pianificazione" | "stampa" | "impostazioni";
