@@ -5,6 +5,7 @@ type Props = {
   onSearch: () => void;
   onClear: () => void;
   placeholder?: string;
+  autoFocus?: boolean;
 };
 
 export function GuestSearchBar({
@@ -14,6 +15,7 @@ export function GuestSearchBar({
   onSearch,
   onClear,
   placeholder = "Cerca ospite, gruppo, camera…",
+  autoFocus = false,
 }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,6 +34,7 @@ export function GuestSearchBar({
         onChange={(e) => onDraftChange(e.target.value)}
         placeholder={placeholder}
         aria-label="Cerca ospiti"
+        autoFocus={autoFocus}
       />
       <button type="submit" className="btn primary small guest-search-submit">
         Cerca

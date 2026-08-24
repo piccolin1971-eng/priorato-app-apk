@@ -1,5 +1,4 @@
 import type { ArrivalMeal, DepartureMeal, GuestStay } from "./types";
-import { isActiveOn } from "./utils";
 import { getPersonCount } from "./stayUtils";
 
 export const ARRIVAL_MEAL_OPTIONS: { id: ArrivalMeal; label: string }[] = [
@@ -24,18 +23,17 @@ export function departureMealLabel(value?: DepartureMeal): string {
 /** Pasto incluso per uno stay in un giorno specifico (arrivo/partenza). */
 export function mealIncludedOnDay(stay: GuestStay, day: string, meal: "lunch" | "dinner"): boolean {
   const base = meal === "lunch" ? stay.lunch : stay.dinner;
-  if (!base || !isActiveOn(stay, day)) return false;
+  if (!base) return false;
+
+  const overnight = stay.checkIn <= day && day < stay.checkOut;
+  const checkoutDay = stay.checkOut === day;
+  if (!overnight && !checkoutDay) return false;
 
   if (stay.checkIn === day && stay.arrivalMeal === "dinner" && meal === "lunch") return false;
 
-  if (stay.checkOut === day && stay.departureMeal) {
-    if (meal === "lunch" && stay.departureMeal === "after_breakfast") return false;
-    if (
-      meal === "dinner" &&
-      (stay.departureMeal === "after_breakfast" || stay.departureMeal === "after_lunch")
-    ) {
-      return false;
-    }
+  if (checkoutDay) {
+    if (!stay.departureMeal || stay.departureMeal === "after_breakfast") return false;
+    if (meal === "dinner" && stay.departureMeal === "after_lunch") return false;
   }
 
   return true;

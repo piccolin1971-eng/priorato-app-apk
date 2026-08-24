@@ -1,8 +1,15 @@
-import type { GuestStay, Room } from "./types";
+import type { DepartureMeal, GuestStay, Room } from "./types";
 import { ROOMS, normalizeRoomId } from "./data/rooms";
 import { pickDefaultRoom } from "./roomSelect";
+import { departureMealLabel } from "./mealTiming";
 import { getStayRoomIds, stayDisplayName } from "./stayUtils";
-import { dateToIso, isActiveOn, isoToDate, staysOverlap } from "./utils";
+import {
+  dateToIso,
+  isoToDate,
+  stayKeepsRoomOnCheckout,
+  stayOccupiesDay,
+  staysOverlap,
+} from "./utils";
 
 export const TOTAL_ROOMS = ROOMS.length;
 
@@ -11,11 +18,12 @@ export function getOccupiedRoomIds(
   checkIn: string,
   checkOut: string,
   excludeStayId?: string,
+  newDepartureMeal?: DepartureMeal,
 ): Set<string> {
   const ids = new Set<string>();
   if (!checkIn || !checkOut || checkOut <= checkIn) return ids;
   for (const stay of stays) {
-    if (staysOverlap(checkIn, checkOut, stay, excludeStayId)) {
+    if (staysOverlap(checkIn, checkOut, stay, excludeStayId, newDepartureMeal)) {
       for (const roomId of getStayRoomIds(stay)) ids.add(roomId);
     }
   }
@@ -28,8 +36,9 @@ export function getAvailableRooms(
   checkOut: string,
   excludeStayId?: string,
   bedType?: Room["bedType"],
+  newDepartureMeal?: DepartureMeal,
 ): Room[] {
-  const occupied = getOccupiedRoomIds(stays, checkIn, checkOut, excludeStayId);
+  const occupied = getOccupiedRoomIds(stays, checkIn, checkOut, excludeStayId, newDepartureMeal);
   return ROOMS.filter(
     (r) => !occupied.has(r.id) && (bedType == null || r.bedType === bedType),
   );
@@ -50,7 +59,7 @@ export function countOccupiedOnDay(stays: GuestStay[], day: string): number {
 }
 
 export function getStaysOnDay(stays: GuestStay[], day: string): GuestStay[] {
-  return stays.filter((s) => isActiveOn(s, day));
+  return stays.filter((s) => stayOccupiesDay(s, day));
 }
 
 export type DayOccupancyDetail = {
@@ -103,6 +112,31 @@ export function getDayOccupancy(stays: GuestStay[], day: string): DayOccupancyDe
     conflicts,
     unknownRoomStays,
   };
+}
+
+export type DayBedStats = {
+  occSingle: number;
+  occDouble: number;
+  freeSingle: number;
+  freeDouble: number;
+};
+
+/** Occupate/libere suddivise in singole e doppie, per la data scelta. */
+export function getDayBedStats(stays: GuestStay[], day: string): DayBedStats {
+  const { stayByRoom } = getDayOccupancy(stays, day);
+  let occSingle = 0;
+  let occDouble = 0;
+  let freeSingle = 0;
+  let freeDouble = 0;
+  for (const room of ROOMS) {
+    const occupied = stayByRoom.has(room.id);
+    if (room.bedType === "double") {
+      if (occupied) occDouble += 1;
+      else freeDouble += 1;
+    } else if (occupied) occSingle += 1;
+    else freeSingle += 1;
+  }
+  return { occSingle, occDouble, freeSingle, freeDouble };
 }
 
 export function getFreeRoomsOnDay(stays: GuestStay[], day: string): Room[] {
@@ -176,16 +210,17 @@ export function findRoomOverlaps(
   checkOut: string,
   roomIds: string[],
   excludeStayId?: string,
+  newDepartureMeal?: DepartureMeal,
 ): RoomOverlap[] {
   if (!checkIn || !checkOut || checkOut <= checkIn || roomIds.length === 0) return [];
-  const occupied = getOccupiedRoomIds(stays, checkIn, checkOut, excludeStayId);
+  const occupied = getOccupiedRoomIds(stays, checkIn, checkOut, excludeStayId, newDepartureMeal);
   const overlaps: RoomOverlap[] = [];
   for (const roomId of roomIds) {
     if (!occupied.has(roomId)) continue;
     const conflicting = stays.filter(
       (s) =>
         s.id !== excludeStayId &&
-        staysOverlap(checkIn, checkOut, s) &&
+        staysOverlap(checkIn, checkOut, s, undefined, newDepartureMeal) &&
         getStayRoomIds(s).includes(roomId),
     );
     if (conflicting.length) overlaps.push({ roomId, stays: conflicting });
@@ -197,7 +232,14 @@ export function formatOverlapMessage(overlaps: RoomOverlap[]): string {
   return overlaps
     .map(({ roomId, stays: list }) => {
       const room = ROOMS.find((r) => r.id === roomId);
-      const names = list.map((s) => stayDisplayName(s)).join(", ");
+      const names = list
+        .map((s) => {
+          const extra = stayKeepsRoomOnCheckout(s)
+            ? ` (in casa fino a ${departureMealLabel(s.departureMeal).toLowerCase()})`
+            : "";
+          return `${stayDisplayName(s)}${extra}`;
+        })
+        .join(", ");
       return `Camera ${room?.number ?? roomId} già occupata da ${names}`;
     })
     .join(". ");

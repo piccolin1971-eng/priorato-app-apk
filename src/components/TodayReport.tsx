@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { GuestStay } from "../types";
 import { ROOMS } from "../data/rooms";
 import { deleteStay } from "../storage";
@@ -11,8 +11,9 @@ import {
   intoleranceCountsTotal,
 } from "../intolerances";
 import { formatStayMealTiming, mealIncludedOnDay } from "../mealTiming";
-import { getPersonCount, mealPersonCount, stayDisplayName, stayRoomsLabel, filterStaysByQuery } from "../stayUtils";
-import { formatDateIt, isActiveOn, todayIso } from "../utils";
+import { stayBookingKind } from "../partyStay";
+import { getPersonCount, mealPersonCount, stayDisplayName, stayGroupLabel, stayRoomsLabel, filterStaysByQuery, isPlaceholderGroupName } from "../stayUtils";
+import { formatDateIt, stayOccupiesDay, todayIso } from "../utils";
 import { useSettings } from "../SettingsContext";
 import { EditStayModal } from "./EditStayModal";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -34,6 +35,8 @@ const SECTION = {
   partenze: "sezione-partenze",
 } as const;
 
+type OpenSection = "none" | (typeof SECTION)[keyof typeof SECTION];
+
 function sumPeople(stays: GuestStay[]): number {
   return stays.reduce((n, s) => n + getPersonCount(s), 0);
 }
@@ -44,6 +47,44 @@ function scrollToSection(id: string) {
   el.scrollIntoView({ behavior: "smooth", block: "start" });
   el.classList.add("section-highlight");
   window.setTimeout(() => el.classList.remove("section-highlight"), 1400);
+}
+
+function joinItAnd(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} e ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} e ${items[items.length - 1]}`;
+}
+
+type MovementBreakdown = {
+  people: number;
+  lines: string[];
+  mixed: boolean;
+};
+
+function movementBreakdown(stays: GuestStay[]): MovementBreakdown {
+  const groupSizes: number[] = [];
+  let singles = 0;
+  let couples = 0;
+  let people = 0;
+  for (const stay of stays) {
+    people += getPersonCount(stay);
+    const kind = stayBookingKind(stay);
+    if (kind === "group") groupSizes.push(getPersonCount(stay));
+    else if (kind === "couple") couples += 1;
+    else singles += 1;
+  }
+  groupSizes.sort((a, b) => b - a);
+  const lines: string[] = [];
+  if (groupSizes.length === 1) lines.push(`1 gruppo da ${groupSizes[0]}`);
+  else if (groupSizes.length > 1) {
+    lines.push(`${groupSizes.length} gruppi da ${joinItAnd(groupSizes.map(String))}`);
+  }
+  if (singles === 1) lines.push("1 singolo");
+  else if (singles > 1) lines.push(`${singles} singoli`);
+  if (couples === 1) lines.push("1 coppia");
+  else if (couples > 1) lines.push(`${couples} coppie`);
+  const categories = [groupSizes.length > 0, singles > 0, couples > 0].filter(Boolean).length;
+  return { people, lines, mixed: categories > 1 };
 }
 
 function StatButton({
@@ -72,19 +113,64 @@ function StatButton({
   );
 }
 
+function MovementStatButton({
+  kindLabel,
+  breakdown,
+  title,
+  onClick,
+}: {
+  kindLabel: string;
+  breakdown: MovementBreakdown;
+  title: string;
+  onClick: () => void;
+}) {
+  const empty = breakdown.lines.length === 0;
+  const header = breakdown.mixed ? `${kindLabel} · ${breakdown.people} persone` : kindLabel;
+  const lines = empty ? ["nessuno"] : breakdown.lines;
+  const summary = empty ? `${kindLabel}: nessuno` : `${header}: ${lines.join(", ")}`;
+  return (
+    <button
+      type="button"
+      className={`stat stat-clickable stat-movement${empty ? " empty" : ""}`}
+      onClick={onClick}
+      title={title}
+      aria-label={summary}
+    >
+      <span className="stat-l">{header}</span>
+      <span className="stat-movement-lines">
+        {lines.map((line) => (
+          <span key={line} className="stat-movement-line">
+            {line}
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
 export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChange, onOpenRooms }: Props) {
   const [editing, setEditing] = useState<GuestStay | null>(null);
-  const [quickFilter, setQuickFilter] = useState<"all" | "arrivals" | "departures" | "lunch" | "dinner">("all");
+  const [openSection, setOpenSection] = useState<OpenSection>("none");
   const { confirmBeforeDelete } = useSettings();
 
   const stats = useMemo(() => {
     const occupancy = getDayOccupancy(stays, day);
-    const inHouse = filterStaysByQuery(stays.filter((s) => isActiveOn(s, day)), searchQuery);
+    const inHouse = filterStaysByQuery(stays.filter((s) => stayOccupiesDay(s, day)), searchQuery);
     const arrivals = filterStaysByQuery(stays.filter((s) => s.checkIn === day), searchQuery);
     const departures = filterStaysByQuery(stays.filter((s) => s.checkOut === day), searchQuery);
-    const lunch = inHouse.filter((s) => mealIncludedOnDay(s, day, "lunch"));
-    const dinner = inHouse.filter((s) => mealIncludedOnDay(s, day, "dinner"));
-    const intolerances = inHouse.filter((s) => hasIntoleranceInfo(s));
+    const lunch = filterStaysByQuery(
+      stays.filter((s) => mealIncludedOnDay(s, day, "lunch")),
+      searchQuery,
+    );
+    const dinner = filterStaysByQuery(
+      stays.filter((s) => mealIncludedOnDay(s, day, "dinner")),
+      searchQuery,
+    );
+    const intolerances = [
+      ...new Map(
+        [...inHouse, ...lunch, ...dinner].filter(hasIntoleranceInfo).map((s) => [s.id, s]),
+      ).values(),
+    ];
     const lunchIntolerances = lunch.filter((s) => hasIntoleranceInfo(s));
     const dinnerIntolerances = dinner.filter((s) => hasIntoleranceInfo(s));
     const lunchIntolCounts = aggregateIntoleranceCounts(stays, day, "lunch");
@@ -97,11 +183,14 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
     const groups = new Map<string, { leader: string; count: number; name: string }>();
     for (const s of inHouse) {
       if (!s.group) continue;
-      const key = `${s.group.name}|${s.group.leaderName}`;
-      const prev = groups.get(key) ?? { name: s.group.name, leader: s.group.leaderName, count: 0 };
+      const display = stayGroupLabel(s) ?? s.guestName;
+      const key = `${display}|${s.group.leaderName}`;
+      const prev = groups.get(key) ?? { name: display, leader: s.group.leaderName, count: 0 };
       prev.count += getPersonCount(s);
       groups.set(key, prev);
     }
+
+    const departingPresentPeople = sumPeople(inHouse.filter((s) => s.checkOut === day));
 
     return {
       inHouse,
@@ -118,6 +207,7 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
       freeRooms,
       occupied: occupancy.occupiedCount,
       peopleInHouse: sumPeople(inHouse),
+      departingPresentPeople,
       lunchPeople: lunch.reduce((n, s) => n + mealPersonCount(s, "lunch", day), 0),
       dinnerPeople: dinner.reduce((n, s) => n + mealPersonCount(s, "dinner", day), 0),
       groups: [...groups.values()],
@@ -125,25 +215,15 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
   }, [stays, day, searchQuery]);
 
   const searching = searchQuery.trim().length > 0;
-  const filtered = useMemo(() => {
-    if (quickFilter === "all") return stats;
-    const match = (s: GuestStay) => {
-      if (quickFilter === "arrivals") return s.checkIn === day;
-      if (quickFilter === "departures") return s.checkOut === day;
-      if (quickFilter === "lunch") return mealIncludedOnDay(s, day, "lunch");
-      return mealIncludedOnDay(s, day, "dinner");
-    };
-    return {
-      ...stats,
-      inHouse: stats.inHouse.filter(match),
-      arrivals: stats.arrivals.filter(match),
-      departures: stats.departures.filter(match),
-      lunch: stats.lunch.filter(match),
-      dinner: stats.dinner.filter(match),
-      intolerances: stats.intolerances.filter(match),
-      groups: stats.groups,
-    };
-  }, [stats, quickFilter, day]);
+
+  useEffect(() => {
+    if (openSection === "none") return;
+    scrollToSection(openSection);
+  }, [openSection]);
+
+  function showSection(section: OpenSection) {
+    setOpenSection(section);
+  }
 
   return (
     <section className="panel">
@@ -166,36 +246,36 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
       <div className="today-quick-filters">
         <button
           type="button"
-          className={quickFilter === "all" ? "quick-filter-btn active" : "quick-filter-btn"}
-          onClick={() => setQuickFilter("all")}
+          className={openSection === "none" ? "quick-filter-btn active" : "quick-filter-btn"}
+          onClick={() => showSection("none")}
         >
           Tutto
         </button>
         <button
           type="button"
-          className={quickFilter === "arrivals" ? "quick-filter-btn active" : "quick-filter-btn"}
-          onClick={() => setQuickFilter("arrivals")}
+          className={openSection === SECTION.arrivi ? "quick-filter-btn active" : "quick-filter-btn"}
+          onClick={() => showSection(SECTION.arrivi)}
         >
           Arrivi
         </button>
         <button
           type="button"
-          className={quickFilter === "departures" ? "quick-filter-btn active" : "quick-filter-btn"}
-          onClick={() => setQuickFilter("departures")}
+          className={openSection === SECTION.partenze ? "quick-filter-btn active" : "quick-filter-btn"}
+          onClick={() => showSection(SECTION.partenze)}
         >
           Partenze
         </button>
         <button
           type="button"
-          className={quickFilter === "lunch" ? "quick-filter-btn active" : "quick-filter-btn"}
-          onClick={() => setQuickFilter("lunch")}
+          className={openSection === SECTION.pranzo ? "quick-filter-btn active" : "quick-filter-btn"}
+          onClick={() => showSection(SECTION.pranzo)}
         >
           Con pranzo
         </button>
         <button
           type="button"
-          className={quickFilter === "dinner" ? "quick-filter-btn active" : "quick-filter-btn"}
-          onClick={() => setQuickFilter("dinner")}
+          className={openSection === SECTION.cena ? "quick-filter-btn active" : "quick-filter-btn"}
+          onClick={() => showSection(SECTION.cena)}
         >
           Con cena
         </button>
@@ -204,9 +284,13 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
       <div className="stat-grid">
         <StatButton
           value={stats.peopleInHouse}
-          label="Persone in casa"
+          label={
+            stats.departingPresentPeople > 0
+              ? `Persone in casa · ${stats.departingPresentPeople} in partenza`
+              : "Persone in casa"
+          }
           title="Vai all'elenco ospiti"
-          onClick={() => scrollToSection(SECTION.ospiti)}
+          onClick={() => showSection(SECTION.ospiti)}
         />
         <StatButton
           value={`${stats.occupied}/${ROOMS.length}`}
@@ -218,13 +302,13 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
           value={stats.lunchPeople}
           label="A pranzo"
           title="Vai all'elenco pranzo"
-          onClick={() => scrollToSection(SECTION.pranzo)}
+          onClick={() => showSection(SECTION.pranzo)}
         />
         <StatButton
           value={stats.dinnerPeople}
           label="A cena"
           title="Vai all'elenco cena"
-          onClick={() => scrollToSection(SECTION.cena)}
+          onClick={() => showSection(SECTION.cena)}
         />
         {(stats.intolerances.length > 0 || stats.intolCountTotal > 0) && (
           <StatButton
@@ -235,21 +319,23 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
                 : `Pranzo ${stats.lunchIntolerancesCount} · Cena ${stats.dinnerIntolerancesCount}`
             }
             title="Vai al dettaglio intolleranze"
-            onClick={() => scrollToSection(SECTION.intolleranze)}
+            onClick={() => showSection(SECTION.intolleranze)}
             className="stat-alert"
           />
         )}
-        <StatButton
-          value={stats.arrivals.length}
-          label="Arrivi oggi"
+      </div>
+      <div className="stat-grid stat-grid-movement">
+        <MovementStatButton
+          kindLabel="Arrivi"
+          breakdown={movementBreakdown(stats.arrivals)}
           title="Vai agli arrivi"
-          onClick={() => scrollToSection(SECTION.arrivi)}
+          onClick={() => showSection(SECTION.arrivi)}
         />
-        <StatButton
-          value={stats.departures.length}
-          label="Partenze oggi"
+        <MovementStatButton
+          kindLabel="Partenze"
+          breakdown={movementBreakdown(stats.departures)}
           title="Vai alle partenze"
-          onClick={() => scrollToSection(SECTION.partenze)}
+          onClick={() => showSection(SECTION.partenze)}
         />
       </div>
 
@@ -259,14 +345,22 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
           <ul className="simple-list">
             {stats.groups.map((g) => (
               <li key={`${g.name}-${g.leader}`}>
-                <strong>{g.name}</strong> — capo gruppo: {g.leader} ({g.count} ospiti)
+                {g.name === g.leader || isPlaceholderGroupName(g.name) ? (
+                  <>
+                    <strong>{g.leader}</strong> ({g.count} ospiti)
+                  </>
+                ) : (
+                  <>
+                    <strong>{g.name}</strong> — referente: {g.leader} ({g.count} ospiti)
+                  </>
+                )}
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {(stats.intolerances.length > 0 || stats.intolCountTotal > 0) && (
+      {openSection === SECTION.intolleranze && (stats.intolerances.length > 0 || stats.intolCountTotal > 0) && (
         <div className="card inset warn report-section" id={SECTION.intolleranze}>
           <h3 className="report-title">Intolleranze / allergie (cucina)</h3>
           {stats.intolCountTotal > 0 && (
@@ -283,9 +377,9 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
               )}
             </div>
           )}
-          {filtered.intolerances.length > 0 && (
+          {stats.intolerances.length > 0 && (
             <ul className="simple-list">
-              {filtered.intolerances.map((s) => (
+              {stats.intolerances.map((s) => (
                 <li key={s.id}>
                   {stayDisplayName(s)} ({stayRoomsLabel(s)}): {formatStayIntolerances(s)}
                   {(s.lunch || s.dinner) && (
@@ -301,17 +395,17 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
         </div>
       )}
 
-      <div className="split-panels">
+      {openSection === SECTION.pranzo && (
         <div className="card inset report-section" id={SECTION.pranzo}>
           <h3 className="report-title">Elenco pranzo</h3>
-          {filtered.lunch.length === 0 ? (
+          {stats.lunch.length === 0 ? (
             <p className="muted">Nessuno a pranzo.</p>
           ) : (
             <ul className="simple-list">
-              {filtered.lunch.map((s) => (
+              {stats.lunch.map((s) => (
                 <li key={`lunch-${s.id}`}>
                   {stayDisplayName(s)} · {stayRoomsLabel(s)}
-                  {s.group && ` · ${s.group.name}`}
+                  {stayGroupLabel(s) && ` · ${stayGroupLabel(s)}`}
                   {formatStayIntolerances(s) && ` · ${formatStayIntolerances(s)}`}
                   {formatStayMealTiming(s, day) && ` · ${formatStayMealTiming(s, day)}`}
                 </li>
@@ -319,16 +413,19 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
             </ul>
           )}
         </div>
+      )}
+
+      {openSection === SECTION.cena && (
         <div className="card inset report-section" id={SECTION.cena}>
           <h3 className="report-title">Elenco cena</h3>
-          {filtered.dinner.length === 0 ? (
+          {stats.dinner.length === 0 ? (
             <p className="muted">Nessuno a cena.</p>
           ) : (
             <ul className="simple-list">
-              {filtered.dinner.map((s) => (
+              {stats.dinner.map((s) => (
                 <li key={`dinner-${s.id}`}>
                   {stayDisplayName(s)} · {stayRoomsLabel(s)}
-                  {s.group && ` · ${s.group.name}`}
+                  {stayGroupLabel(s) && ` · ${stayGroupLabel(s)}`}
                   {formatStayIntolerances(s) && ` · ${formatStayIntolerances(s)}`}
                   {formatStayMealTiming(s, day) && ` · ${formatStayMealTiming(s, day)}`}
                 </li>
@@ -336,16 +433,16 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
             </ul>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="split-panels">
+      {openSection === SECTION.arrivi && (
         <div className="card inset report-section" id={SECTION.arrivi}>
           <h3 className="report-title">Arrivi</h3>
-          {filtered.arrivals.length === 0 ? (
+          {stats.arrivals.length === 0 ? (
             <p className="muted">Nessun arrivo.</p>
           ) : (
             <ul className="guest-list">
-              {filtered.arrivals.map((s) => (
+              {stats.arrivals.map((s) => (
                 <GuestRow
                   key={s.id}
                   stay={s}
@@ -358,13 +455,16 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
             </ul>
           )}
         </div>
+      )}
+
+      {openSection === SECTION.partenze && (
         <div className="card inset report-section" id={SECTION.partenze}>
           <h3 className="report-title">Partenze</h3>
-          {filtered.departures.length === 0 ? (
+          {stats.departures.length === 0 ? (
             <p className="muted">Nessuna partenza.</p>
           ) : (
             <ul className="guest-list">
-              {filtered.departures.map((s) => (
+              {stats.departures.map((s) => (
                 <GuestRow
                   key={s.id}
                   stay={s}
@@ -377,28 +477,30 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
             </ul>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="card inset report-section" id={SECTION.ospiti}>
-        <h3 className="report-title">Tutti gli ospiti in casa</h3>
-        {filtered.inHouse.length === 0 ? (
-          <p className="muted">Nessun ospite registrato per oggi.</p>
-        ) : (
-          <ul className="guest-list">
-            {filtered.inHouse.map((s) => (
-              <GuestRow
-                key={s.id}
-                stay={s}
-                day={day}
-                showMeals
-                confirmBeforeDelete={confirmBeforeDelete}
-                onEdit={setEditing}
-                onDelete={onChange}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+      {openSection === SECTION.ospiti && (
+        <div className="card inset report-section" id={SECTION.ospiti}>
+          <h3 className="report-title">Tutti gli ospiti in casa</h3>
+          {stats.inHouse.length === 0 ? (
+            <p className="muted">Nessun ospite registrato per oggi.</p>
+          ) : (
+            <ul className="guest-list">
+              {stats.inHouse.map((s) => (
+                <GuestRow
+                  key={s.id}
+                  stay={s}
+                  day={day}
+                  showMeals
+                  confirmBeforeDelete={confirmBeforeDelete}
+                  onEdit={setEditing}
+                  onDelete={onChange}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -457,7 +559,11 @@ function GuestRow({
         </span>
         {stay.group && (
           <span className="tag">
-            {stay.group.name} · capo: {stay.group.leaderName}
+            {isPlaceholderGroupName(stay.group.name)
+              ? `referente: ${stay.group.leaderName || stay.guestName}`
+              : stay.group.leaderName
+                ? `${stayGroupLabel(stay)} · referente: ${stay.group.leaderName}`
+                : stayGroupLabel(stay)}
           </span>
         )}
       </div>

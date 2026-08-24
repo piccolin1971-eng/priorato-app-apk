@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { GuestStay } from "../types";
 import { ROOMS, ROOM_SECTIONS } from "../data/rooms";
 import { TOTAL_ROOMS, countOccupiedOnDay, getDayOccupancy, verifyAvailability } from "../roomAvailability";
-import { stayDisplayName } from "../stayUtils";
+import { roomGuestLabel } from "../partyStay";
+import { stayDisplayName, stayGroupLabel } from "../stayUtils";
 import { dateToIso, formatDateIt, isoToDate, todayIso } from "../utils";
 import { DateInput } from "./DateInput";
 
 type Props = {
   stays: GuestStay[];
   day?: string;
+  onEditStay?: (stay: GuestStay) => void;
 };
 
 type ViewMode = "mese" | "settimana";
@@ -81,7 +83,7 @@ function defaultCheckOut(checkIn: string): string {
   return dateToIso(d);
 }
 
-export function PlanningView({ stays, day = todayIso() }: Props) {
+export function PlanningView({ stays, day = todayIso(), onEditStay }: Props) {
   const today = todayIso();
   const [viewMode, setViewMode] = useState<ViewMode>("mese");
   const [cursor, setCursor] = useState(() => isoToDate(day) ?? isoToDate(today) ?? new Date());
@@ -328,16 +330,12 @@ export function PlanningView({ stays, day = todayIso() }: Props) {
                   {sectionRooms.map((room) => {
                     const stay = stayByRoom.get(room.id);
                     const markerCount = room.bedType === "double" ? 2 : 1;
-                    return (
-                      <div
-                        key={room.id}
-                        className={`${stay ? "plan-room occupied" : "plan-room free"}${room.large ? " plan-room-large" : ""}`}
-                        title={
-                          stay
-                            ? `${stayDisplayName(stay)} · dal ${formatDateIt(stay.checkIn)} al ${formatDateIt(stay.checkOut)}`
-                            : "Libera"
-                        }
-                      >
+                    const className = `${stay ? "plan-room occupied" : "plan-room free"}${room.large ? " plan-room-large" : ""}${stay && onEditStay ? " plan-room-clickable" : ""}`;
+                    const title = stay
+                      ? `${stayDisplayName(stay)} · dal ${formatDateIt(stay.checkIn)} al ${formatDateIt(stay.checkOut)}`
+                      : "Libera";
+                    const body = (
+                      <>
                         <div
                           className={`plan-room-markers ${
                             markerCount === 2 ? "plan-room-markers-double" : "plan-room-markers-single"
@@ -358,12 +356,32 @@ export function PlanningView({ stays, day = todayIso() }: Props) {
                         </span>
                         {stay ? (
                           <>
-                            <span className="plan-room-guest">{stayDisplayName(stay)}</span>
-                            {stay.group && <span className="plan-room-group">{stay.group.name}</span>}
+                            <span className="plan-room-guest">{roomGuestLabel(stay, room.id)}</span>
+                            {stayGroupLabel(stay) && (
+                              <span className="plan-room-group">{stayGroupLabel(stay)}</span>
+                            )}
                           </>
                         ) : (
                           <span className="plan-room-free">Libera</span>
                         )}
+                      </>
+                    );
+                    if (stay && onEditStay) {
+                      return (
+                        <button
+                          key={room.id}
+                          type="button"
+                          className={className}
+                          title={title}
+                          onClick={() => onEditStay(stay)}
+                        >
+                          {body}
+                        </button>
+                      );
+                    }
+                    return (
+                      <div key={room.id} className={className} title={title}>
+                        {body}
                       </div>
                     );
                   })}

@@ -1,19 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ArrivalMeal, BoardType, DepartureMeal, GuestStay, IntoleranceCounts, RegistrationKind } from "../types";
-import { assignNearbyPartyRooms, formatPartyRoomList, partyPeopleAndRooms } from "../assignNearbyRooms";
-import { getAvailableRooms, findRoomOverlaps, formatOverlapMessage, TOTAL_ROOMS } from "../roomAvailability";
+import { formatPartyLayoutLabel } from "../assignNearbyRooms";
+import { getAvailableRooms, findRoomOverlaps, formatOverlapMessage } from "../roomAvailability";
+import { MAX_PARTY_PEOPLE } from "../data/rooms";
 import { pickDefaultRoom, roomOptionLabel, sortRoomsForSelect } from "../roomSelect";
 import { buildIntoleranceFields, buildMealTimingFields } from "../stayFields";
-import { buildPartyGroupInfo, countCouplesInRoomIds, isPartyLikeStay } from "../partyStay";
+import {
+  buildPartyGroupInfo,
+  countCouplesInRoomIds,
+  isPartyLikeStay,
+  occupantsFromStay,
+  participantsFromOccupants,
+} from "../partyStay";
 import { getDeviceName } from "../device";
 import { deleteStay, updateStay } from "../storage";
 import { getPersonCount, getStayRoomIds, stayDisplayName, stayRoomsLabel } from "../stayUtils";
 import { useSettings } from "../SettingsContext";
+import { usePartyRooms } from "../usePartyRooms";
 import { boardLabel, defaultMeals } from "../utils";
 import { DateInput } from "./DateInput";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { IntoleranceCountsFields, emptyIntoleranceCounts } from "./IntoleranceCountsFields";
 import { MealTimingFields } from "./MealTimingFields";
+import { PartyRoomsEditor } from "./PartyRoomsEditor";
 
 type Props = {
   stay: GuestStay;
@@ -29,8 +38,6 @@ type FormState = {
   guestPhone: string;
   guestEmail: string;
   groupName: string;
-  leaderName: string;
-  leaderPhone: string;
   roomId: string;
   checkIn: string;
   checkOut: string;
@@ -42,7 +49,7 @@ type FormState = {
   arrivalMeal?: ArrivalMeal;
   departureMeal?: DepartureMeal;
   notes: string;
-  partyExtra: number;
+  partyPeople: number;
   partyCouples: number;
 };
 
@@ -55,8 +62,6 @@ function stayToForm(stay: GuestStay): FormState {
   else if (partyLike) mode = "party";
 
   const groupName = stay.group?.name ?? "";
-  const leaderName = stay.group?.leaderName ?? "";
-  const leaderPhone = stay.group?.leaderPhone ?? "";
 
   return {
     mode,
@@ -65,9 +70,6 @@ function stayToForm(stay: GuestStay): FormState {
     guestPhone: stay.guestPhone ?? "",
     guestEmail: stay.guestEmail ?? "",
     groupName: groupName === "Gruppo" || groupName === "Gruppo senza nome" ? "" : groupName,
-    leaderName:
-      leaderName && leaderName !== stay.guestName.trim() ? leaderName : "",
-    leaderPhone,
     roomId: stay.roomId,
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
@@ -79,8 +81,17 @@ function stayToForm(stay: GuestStay): FormState {
     arrivalMeal: stay.arrivalMeal,
     departureMeal: stay.departureMeal,
     notes: stay.notes,
-    partyExtra: Math.max(0, people - 1),
-    partyCouples: partyLike ? countCouplesInRoomIds(roomIds) : 0,
+    partyPeople: partyLike ? people : 0,
+    partyCouples: partyLike
+      ? Math.max(
+          0,
+          Math.min(
+            countCouplesInRoomIds(roomIds),
+            people - roomIds.length,
+            Math.floor(people / 2),
+          ),
+        )
+      : 0,
   };
 }
 
@@ -89,25 +100,30 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
   const [form, setForm] = useState(() => stayToForm(stay));
   const [message, setMessage] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [partySelectedRoomIds, setPartySelectedRoomIds] = useState<string[]>(getStayRoomIds(stay));
   const datesValid = form.checkOut > form.checkIn;
-  const totalPeople = 1 + Math.max(0, form.partyExtra);
-  const partyLayout = partyPeopleAndRooms(totalPeople, form.partyCouples);
+  const totalPeople = Math.max(0, form.partyPeople);
   const bedFilter = form.mode === "double" ? "double" : form.mode === "single" ? "single" : undefined;
 
   const availableRooms = useMemo(
-    () => (datesValid && form.mode !== "party" ? getAvailableRooms(stays, form.checkIn, form.checkOut, stay.id, bedFilter) : []),
-    [stays, form.checkIn, form.checkOut, datesValid, stay.id, form.mode, bedFilter],
+    () =>
+      datesValid && form.mode !== "party"
+        ? getAvailableRooms(stays, form.checkIn, form.checkOut, stay.id, bedFilter, form.departureMeal)
+        : [],
+    [stays, form.checkIn, form.checkOut, datesValid, stay.id, form.mode, bedFilter, form.departureMeal],
   );
 
-  const partyPlan = useMemo(() => {
-    if (!datesValid || form.mode !== "party" || !partyLayout.valid) return null;
-    return assignNearbyPartyRooms(stays, form.checkIn, form.checkOut, partyLayout.couplesCount, partyLayout.singlesCount, stay.id);
-  }, [stays, form, datesValid, partyLayout, stay.id]);
-  const partyAvailableRooms = useMemo(
-    () => (datesValid && form.mode === "party" ? getAvailableRooms(stays, form.checkIn, form.checkOut, stay.id) : []),
-    [stays, form.checkIn, form.checkOut, datesValid, form.mode, stay.id],
-  );
+  const party = usePartyRooms({
+    enabled: form.mode === "party",
+    stays,
+    excludeStayId: stay.id,
+    checkIn: form.checkIn,
+    checkOut: form.checkOut,
+    totalPeople,
+    couplesCount: form.partyCouples,
+    initialRoomIds: getStayRoomIds(stay),
+    initialOccupants: occupantsFromStay(stay),
+    departureMeal: form.departureMeal,
+  });
 
   useEffect(() => {
     if (!datesValid || form.mode === "party") return;
@@ -117,17 +133,6 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
       if (next !== form.roomId) setForm((f) => ({ ...f, roomId: next }));
     }
   }, [availableRooms, datesValid, form.roomId, form.mode]);
-
-  useEffect(() => {
-    if (form.mode !== "party") return;
-    const allowed = new Set(partyAvailableRooms.map((r) => r.id));
-    const kept = partySelectedRoomIds.filter((id) => allowed.has(id));
-    if (kept.length > 0) {
-      if (kept.length !== partySelectedRoomIds.length) setPartySelectedRoomIds(kept);
-      return;
-    }
-    setPartySelectedRoomIds(partyPlan?.roomIds ?? []);
-  }, [form.mode, partyAvailableRooms, partyPlan, partySelectedRoomIds]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -142,38 +147,24 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
     setForm((f) => ({ ...f, board, lunch: meals.lunch, dinner: meals.dinner }));
   }
 
-  function togglePartyRoom(roomId: string) {
-    setPartySelectedRoomIds((prev) =>
-      prev.includes(roomId) ? prev.filter((id) => id !== roomId) : [...prev, roomId],
-    );
-  }
-
-  const partySelectionOk = useMemo(() => {
-    if (form.mode !== "party") return true;
-    if (!partyLayout.valid) return false;
-    if ((partyPlan?.roomsShortage ?? 0) > 0) return false;
-    if (partySelectedRoomIds.length !== partyLayout.roomsNeeded) return false;
-    const selected = partyAvailableRooms.filter((r) => partySelectedRoomIds.includes(r.id));
-    const doubles = selected.filter((r) => r.bedType === "double").length;
-    return doubles >= partyLayout.couplesCount;
-  }, [form.mode, partyLayout, partySelectedRoomIds, partyAvailableRooms, partyPlan]);
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.guestName.trim()) return setMessage("Inserisci il referente.");
     if (!datesValid) return setMessage("La data di partenza deve essere dopo l'arrivo.");
-    if (form.mode === "double" && !form.secondGuestName.trim()) return setMessage("Inserisci il nome del secondo ospite.");
+    if (form.mode === "double" && !form.secondGuestName.trim()) {
+      return setMessage("Inserisci il nome del secondo ospite.");
+    }
     if (form.mode !== "party" && (!form.roomId || !availableRooms.some((r) => r.id === form.roomId))) {
       return setMessage("Camera non disponibile per le date selezionate.");
     }
-    if (form.mode === "party" && (!partyLayout.valid || !partySelectionOk)) {
-      return setMessage("Seleziona il numero corretto di camere (doppie/singole) per il gruppo.");
+    if (form.mode === "party" && (totalPeople < 2 || !party.partyLayout.valid || !party.partySelectionOk)) {
+      return setMessage("Controlla persone, camere doppie e disponibilità per le date.");
     }
 
-    const selectedPartyRooms = partyAvailableRooms.filter((r) => partySelectedRoomIds.includes(r.id));
-    const roomIds = form.mode === "party" ? selectedPartyRooms.map((r) => r.id) : [form.roomId];
+    const selectedPartyRooms = party.selectedRoomIds;
+    const roomIds = form.mode === "party" ? selectedPartyRooms : [form.roomId];
 
-    const overlaps = findRoomOverlaps(stays, form.checkIn, form.checkOut, roomIds, stay.id);
+    const overlaps = findRoomOverlaps(stays, form.checkIn, form.checkOut, roomIds, stay.id, form.departureMeal);
     if (overlaps.length) {
       return setMessage(formatOverlapMessage(overlaps));
     }
@@ -185,8 +176,8 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
       secondGuestName: form.mode === "double" ? form.secondGuestName.trim() : undefined,
       guestPhone: form.guestPhone.trim() || undefined,
       guestEmail: form.guestEmail.trim() || undefined,
-      roomId: form.mode === "party" ? selectedPartyRooms[0]!.id : form.roomId,
-      roomIds: form.mode === "party" ? selectedPartyRooms.map((r) => r.id) : [form.roomId],
+      roomId: form.mode === "party" ? selectedPartyRooms[0]! : form.roomId,
+      roomIds: form.mode === "party" ? selectedPartyRooms : [form.roomId],
       personCount: form.mode === "double" ? 2 : form.mode === "party" ? totalPeople : 1,
       checkIn: form.checkIn,
       checkOut: form.checkOut,
@@ -204,8 +195,7 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
               guestName: form.guestName,
               guestPhone: form.guestPhone,
               groupName: form.groupName,
-              leaderName: form.leaderName,
-              leaderPhone: form.leaderPhone,
+              participants: participantsFromOccupants(selectedPartyRooms, party.occupants),
             })
           : undefined,
     };
@@ -213,17 +203,33 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
     onSaved(updateStay(updated));
   }
 
+  const maxDoubles = Math.floor(totalPeople / 2);
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
-      <div className="modal panel" role="dialog" aria-labelledby="edit-stay-title" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal panel"
+        role="dialog"
+        aria-labelledby="edit-stay-title"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="modal-head">
           <h2 id="edit-stay-title">Modifica registrazione</h2>
-          <button type="button" className="btn ghost small" onClick={onClose} aria-label="Chiudi">✕</button>
+          <button type="button" className="btn ghost small" onClick={onClose} aria-label="Chiudi">
+            ✕
+          </button>
         </header>
         <form className="form" onSubmit={handleSubmit}>
           <div className="grid two">
             {form.mode !== "double" && form.mode !== "party" && (
-              <label>Nome ospite *<input value={form.guestName} onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))} /></label>
+              <label>
+                Nome ospite *
+                <input
+                  value={form.guestName}
+                  onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
+                />
+              </label>
             )}
             {form.mode !== "party" && (
               <label>
@@ -241,14 +247,34 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
                 </select>
               </label>
             )}
-            <DateInput label="Arrivo" value={form.checkIn} onChange={(checkIn) => setForm((f) => ({ ...f, checkIn }))} />
-            <DateInput label="Partenza" value={form.checkOut} onChange={(checkOut) => setForm((f) => ({ ...f, checkOut }))} />
+            <DateInput
+              label="Arrivo"
+              value={form.checkIn}
+              onChange={(checkIn) => setForm((f) => ({ ...f, checkIn }))}
+            />
+            <DateInput
+              label="Partenza"
+              value={form.checkOut}
+              onChange={(checkOut) => setForm((f) => ({ ...f, checkOut }))}
+            />
           </div>
           {form.mode === "double" && (
             <div className="card inset">
               <h3>Camera doppia</h3>
-              <label>Primo ospite *<input value={form.guestName} onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))} /></label>
-              <label>Secondo ospite *<input value={form.secondGuestName} onChange={(e) => setForm((f) => ({ ...f, secondGuestName: e.target.value }))} /></label>
+              <label>
+                Primo ospite *
+                <input
+                  value={form.guestName}
+                  onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
+                />
+              </label>
+              <label>
+                Secondo ospite *
+                <input
+                  value={form.secondGuestName}
+                  onChange={(e) => setForm((f) => ({ ...f, secondGuestName: e.target.value }))}
+                />
+              </label>
             </div>
           )}
           {form.mode === "party" && (
@@ -264,58 +290,12 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
                   />
                 </label>
                 <label>
-                  Capo gruppo (opzionale)
+                  Referente *
                   <input
-                    value={form.leaderName}
-                    onChange={(e) => setForm((f) => ({ ...f, leaderName: e.target.value }))}
-                    placeholder="Se diverso dal referente"
+                    value={form.guestName}
+                    onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
                   />
                 </label>
-                <label>
-                  Telefono capo gruppo
-                  <input
-                    type="tel"
-                    value={form.leaderPhone}
-                    onChange={(e) => setForm((f) => ({ ...f, leaderPhone: e.target.value }))}
-                  />
-                </label>
-              </div>
-              <label>
-                Referente / nominativo principale *
-                <input value={form.guestName} onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))} />
-              </label>
-              <div className="grid two">
-                <label>
-                  Altre persone oltre al nominativo
-                  <input
-                    type="number"
-                    min={0}
-                    max={TOTAL_ROOMS - 1}
-                    value={form.partyExtra}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        partyExtra: Math.min(TOTAL_ROOMS - 1, Math.max(0, Number(e.target.value) || 0)),
-                      }))
-                    }
-                  />
-                  <span className="hint">Totale: {totalPeople} persone</span>
-                </label>
-                <label>
-                  Coppie in camera doppia
-                  <input
-                    type="number"
-                    min={0}
-                    max={Math.floor(totalPeople / 2)}
-                    value={form.partyCouples}
-                    onChange={(e) => setForm((f) => ({ ...f, partyCouples: Math.max(0, Number(e.target.value) || 0) }))}
-                  />
-                  <span className="hint">
-                    {partyLayout.couplesCount} doppie + {partyLayout.singlesCount} singole = {partyLayout.roomsNeeded} camere
-                  </span>
-                </label>
-              </div>
-              <div className="grid two">
                 <label>
                   Telefono referente
                   <input
@@ -332,33 +312,45 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
                     onChange={(e) => setForm((f) => ({ ...f, guestEmail: e.target.value }))}
                   />
                 </label>
-              </div>
-              <p className="muted">Camere attuali: {getStayRoomIds(stay).join(", ")} · nuove: {partyPlan?.rooms.map((r) => r.number).join(", ") ?? "—"}</p>
-              {datesValid && partyLayout.valid && partyPlan && (
-                <p className={`party-plan-preview${partyPlan.roomsShortage === 0 ? "" : " warn-text"}`}>
-                  {partyPlan.roomsShortage > 0
-                    ? `Sistemate ${partyPlan.rooms.length} camere su ${partyLayout.roomsNeeded} richieste — mancano ancora ${partyPlan.roomsShortage} camere.`
-                    : partyPlan.usesMultipleBlocks
-                      ? `Camere proposte su più blocchi (${partyPlan.sectionTitle}): ${formatPartyRoomList(partyPlan.rooms)}`
-                      : `Camere proposte (${partyPlan.sectionTitle}): ${formatPartyRoomList(partyPlan.rooms)}`}
-                </p>
-              )}
-              <div className="party-room-picker">
-                <p className="muted">
-                  Seleziona {partyLayout.roomsNeeded} camere: almeno {partyLayout.couplesCount} doppie e {partyLayout.singlesCount} singole.
-                </p>
-                <div className="grid two">
-                  {sortRoomsForSelect(partyAvailableRooms).map((r) => (
-                    <label key={r.id}>
-                      <input
-                        type="checkbox"
-                        checked={partySelectedRoomIds.includes(r.id)}
-                        onChange={() => togglePartyRoom(r.id)}
-                      />
-                      {roomOptionLabel(r)} ({r.bedType === "double" ? "doppia" : "singola"})
-                    </label>
-                  ))}
-                </div>
+                <label>
+                  Persone totali *
+                  <input
+                    type="number"
+                    min={2}
+                    max={MAX_PARTY_PEOPLE}
+                    value={form.partyPeople === 0 ? "" : form.partyPeople}
+                    onChange={(e) => {
+                      const n = Math.min(
+                        MAX_PARTY_PEOPLE,
+                        Math.max(0, Number(e.target.value || "0") || 0),
+                      );
+                      setForm((f) => ({
+                        ...f,
+                        partyPeople: n,
+                        partyCouples: Math.min(f.partyCouples, Math.floor(n / 2)),
+                      }));
+                    }}
+                  />
+                  <span className="hint">Referente compreso</span>
+                </label>
+                <label>
+                  Camere doppie
+                  <input
+                    type="number"
+                    min={0}
+                    max={maxDoubles}
+                    value={form.partyCouples}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        partyCouples: Math.max(0, Number(e.target.value) || 0),
+                      }))
+                    }
+                  />
+                  <span className="hint">
+                    {totalPeople >= 2 ? formatPartyLayoutLabel(party.partyLayout) : "0 doppie + 0 singole"}
+                  </span>
+                </label>
               </div>
             </div>
           )}
@@ -368,11 +360,34 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
             onArrivalChange={(arrivalMeal) => setForm((f) => ({ ...f, arrivalMeal }))}
             onDepartureChange={(departureMeal) => setForm((f) => ({ ...f, departureMeal }))}
           />
-          <label>Tipo soggiorno<select value={form.board} onChange={(e) => setBoard(e.target.value as BoardType)}><option value="bb">Notte + colazione</option><option value="half_lunch">Mezza pensione (pranzo)</option><option value="half_dinner">Mezza pensione (cena)</option><option value="full">Pensione completa</option></select><span className="hint">{boardLabel(form.board)}</span></label>
+          <label>
+            Tipo soggiorno
+            <select value={form.board} onChange={(e) => setBoard(e.target.value as BoardType)}>
+              <option value="bb">Notte + colazione</option>
+              <option value="half_lunch">Mezza pensione (pranzo)</option>
+              <option value="half_dinner">Mezza pensione (cena)</option>
+              <option value="full">Pensione completa</option>
+            </select>
+            <span className="hint">{boardLabel(form.board)}</span>
+          </label>
           <fieldset className="checks">
             <legend>Presenza pasti</legend>
-            <label><input type="checkbox" checked={form.lunch} onChange={(e) => setForm((f) => ({ ...f, lunch: e.target.checked }))} />Pranzo</label>
-            <label><input type="checkbox" checked={form.dinner} onChange={(e) => setForm((f) => ({ ...f, dinner: e.target.checked }))} />Cena</label>
+            <label>
+              <input
+                type="checkbox"
+                checked={form.lunch}
+                onChange={(e) => setForm((f) => ({ ...f, lunch: e.target.checked }))}
+              />
+              Pranzo
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={form.dinner}
+                onChange={(e) => setForm((f) => ({ ...f, dinner: e.target.checked }))}
+              />
+              Cena
+            </label>
           </fieldset>
           {form.mode === "party" && (
             <IntoleranceCountsFields
@@ -383,9 +398,21 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
           )}
           <div className="grid two">
             {(form.mode === "single" || form.mode === "double") && (
-              <label>Intolleranze / allergie<input value={form.intolerances} onChange={(e) => setForm((f) => ({ ...f, intolerances: e.target.value }))} /></label>
+              <label>
+                Intolleranze / allergie
+                <input
+                  value={form.intolerances}
+                  onChange={(e) => setForm((f) => ({ ...f, intolerances: e.target.value }))}
+                />
+              </label>
             )}
-            <label>Note<input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></label>
+            <label>
+              Note
+              <input
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </label>
           </div>
           {form.mode === "party" && (
             <label>
@@ -396,9 +423,25 @@ export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
               />
             </label>
           )}
+          {form.mode === "party" && totalPeople >= 2 && datesValid && (
+            <PartyRoomsEditor
+              selectedRoomIds={party.selectedRoomIds}
+              occupants={party.occupants}
+              availableRooms={party.partyAvailableRooms}
+              layout={party.partyLayout}
+              shortage={party.shortage}
+              onReplaceRoom={party.replaceRoom}
+              onOccupantsChange={party.setOccupants}
+              onReplan={party.replan}
+            />
+          )}
           <div className="actions">
-            <button type="submit" className="btn primary">Salva modifiche</button>
-            <button type="button" className="btn ghost" onClick={onClose}>Annulla</button>
+            <button type="submit" className="btn primary">
+              Salva modifiche
+            </button>
+            <button type="button" className="btn ghost" onClick={onClose}>
+              Annulla
+            </button>
             <button
               type="button"
               className="btn danger"

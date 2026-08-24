@@ -20,16 +20,32 @@ export function getPersonCount(stay: GuestStay): number {
   return 1;
 }
 
+export function isPlaceholderGroupName(name?: string): boolean {
+  const n = name?.trim() ?? "";
+  return !n || n === "Gruppo" || n === "Gruppo senza nome";
+}
+
+/** Nome gruppo da mostrare; se manca, il referente. */
+export function stayGroupLabel(stay: GuestStay): string | undefined {
+  const name = stay.group?.name?.trim();
+  if (name && !isPlaceholderGroupName(name)) return name;
+  const leader = stay.group?.leaderName?.trim();
+  if (leader) return leader;
+  if (stay.group) return stay.guestName.trim() || undefined;
+  return undefined;
+}
+
 export function stayDisplayName(stay: GuestStay): string {
   if (stay.secondGuestName?.trim()) {
     return `${stay.guestName} + ${stay.secondGuestName.trim()}`;
   }
   const n = getPersonCount(stay);
-  if (stay.group?.name && n > 1) {
-    const leader = stay.group.leaderName?.trim();
+  const rawName = stay.group?.name?.trim();
+  if (rawName && !isPlaceholderGroupName(rawName) && n > 1) {
+    const leader = stay.group?.leaderName?.trim();
     const base = leader && leader !== stay.guestName.trim()
-      ? `${stay.group.name} — ${stay.guestName}`
-      : stay.group.name;
+      ? `${rawName} — ${stay.guestName}`
+      : rawName;
     return `${base} (${n} persone)`;
   }
   if (n > 1) return `${stay.guestName} (${n} persone)`;

@@ -1,5 +1,5 @@
 import { ROOMS, ROOM_SECTIONS } from "./data/rooms";
-import type { GuestStay, Room } from "./types";
+import type { DepartureMeal, GuestStay, Room } from "./types";
 import { getAvailableRooms } from "./roomAvailability";
 
 export type PartyRoomPlan = {
@@ -158,10 +158,16 @@ export function assignNearbyPartyRooms(
   couplesCount: number,
   singlesCount: number,
   excludeStayId?: string,
+  newDepartureMeal?: DepartureMeal,
 ): PartyRoomPlan | null {
-  const available = getAvailableRooms(stays, checkIn, checkOut, excludeStayId).filter(
-    (r) => r.id !== "106",
-  );
+  const available = getAvailableRooms(
+    stays,
+    checkIn,
+    checkOut,
+    excludeStayId,
+    undefined,
+    newDepartureMeal,
+  ).filter((r) => r.id !== "106");
 
   const bySection = new Map<string, { doubles: Room[]; singles: Room[] }>();
   for (const r of available) {
@@ -222,6 +228,15 @@ export function partyPeopleAndRooms(totalPeople: number, couplesCount: number): 
     roomsNeeded,
     valid: peopleInDoubles + singlesCount === totalPeople,
   };
+}
+
+export type PartyPeopleLayout = ReturnType<typeof partyPeopleAndRooms>;
+
+export function formatPartyLayoutLabel(layout: PartyPeopleLayout): string {
+  const dWord = layout.couplesCount === 1 ? "doppia" : "doppie";
+  const sWord = layout.singlesCount === 1 ? "singola" : "singole";
+  const roomsWord = layout.roomsNeeded === 1 ? "camera" : "camere";
+  return `${layout.couplesCount} ${dWord} + ${layout.singlesCount} ${sWord} = ${layout.roomsNeeded} ${roomsWord}`;
 }
 
 export function formatPartyRoomList(rooms: Room[]): string {

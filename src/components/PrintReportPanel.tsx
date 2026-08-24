@@ -1,24 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DayPicker } from "react-day-picker";
-import { it } from "react-day-picker/locale";
 import type { GuestStay } from "../types";
 import {
   DEFAULT_PRINT_OPTIONS,
+  DEFAULT_PRINT_SCOPE,
   buildPrintReport,
+  collectGroupNames,
+  collectLeaderNames,
   guestContact,
   periodAnalytics,
   periodTotals,
   getPeriodDays,
   roomLabel,
+  stayOverlapsPeriod,
   type PrintReportOptions,
+  type PrintScope,
+  type PrintScopeKind,
   type ReportPeriod,
 } from "../printReport";
 import { downloadSnapshotsCsv } from "../exportCsv";
 import { formatStayIntolerances } from "../intolerances";
 import { generateReportPdf, pdfFilename, sharePdfByEmail } from "../printPdf";
 import { useSettings } from "../SettingsContext";
-import { mealPersonCount, stayDisplayName, stayRoomsLabel } from "../stayUtils";
-import { dateToIso, formatDateIt, formatWeekdayIt, isoToDate, todayIso } from "../utils";
+import { groupRoomsBySection, namesForRoom } from "../partyStay";
+import { mealPersonCount, stayDisplayName, stayGroupLabel, stayRoomsLabel } from "../stayUtils";
+import { dateToIso, formatDateIt, isoToDate, todayIso } from "../utils";
 import { ReportProfilesSection } from "./ReportProfilesSection";
 
 type Props = {
@@ -54,8 +59,8 @@ const TOGGLE_GROUPS: {
       { key: "includeRooms", label: "Camere", hint: "Numero camera per ospite" },
       { key: "includeMeals", label: "Pranzo e cena", hint: "Presenza ai pasti" },
       { key: "includeIntolerances", label: "Intolleranze", hint: "Allergie e diete" },
-      { key: "includeGroups", label: "Gruppi", hint: "Nome gruppo e capo" },
-      { key: "includeContact", label: "Telefono / email", hint: "Contatti ospite e capo gruppo" },
+      { key: "includeGroups", label: "Gruppi", hint: "Nome gruppo e referente" },
+      { key: "includeContact", label: "Telefono / email", hint: "Contatti ospite e referente" },
       { key: "includeNotes", label: "Note", hint: "Note libere" },
     ],
   },
@@ -66,12 +71,6 @@ const PERIODS: { id: ReportPeriod; label: string }[] = [
   { id: "week", label: "Settimana" },
   { id: "month", label: "Mese" },
 ];
-
-function addDays(iso: string, delta: number): string {
-  const d = isoToDate(iso) ?? new Date();
-  d.setDate(d.getDate() + delta);
-  return dateToIso(d);
-}
 
 function shiftAnchorDate(anchor: string, period: ReportPeriod, delta: number): string {
   const d = isoToDate(anchor) ?? new Date();
@@ -95,6 +94,57 @@ function periodNavLabel(period: ReportPeriod, anchor: string, rangeDayCount = 2)
   return `${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+function PartyOccupantsPrint({ stays }: { stays: GuestStay[] }) {
+  const groups = stays.filter((s) => (s.group?.participants ?? []).some((p) => p.name.trim()));
+  if (groups.length === 0) return null;
+  return (
+    <>
+      {groups.map((stay) => {
+        const grouped = groupRoomsBySection(stay.roomIds?.length ? stay.roomIds : [stay.roomId]);
+        return (
+          <section key={stay.id} className="print-section print-party-occupants">
+            <h3>
+              Nominativi per camera
+              {stayGroupLabel(stay) ? ` — ${stayGroupLabel(stay)}` : ""}
+              {stay.group?.leaderName && stayGroupLabel(stay) !== stay.group.leaderName
+                ? ` · referente ${stay.group.leaderName}`
+                : ""}
+            </h3>
+            <div className="plan-blocks party-assign-blocks print-party-blocks">
+              {grouped.map(({ section, rooms }) => (
+                <div key={section.id} className={`plan-block plan-block-${section.id}`}>
+                  <div className="plan-block-head">
+                    <h4>{section.title}</h4>
+                    <span className="plan-block-range">{section.range}</span>
+                    <span className="plan-block-stat">
+                      {rooms.length} camer{rooms.length === 1 ? "a" : "e"}
+                    </span>
+                  </div>
+                  <ul className="print-party-room-list">
+                    {rooms.map((room) => {
+                      const names = namesForRoom(stay, room.id);
+                      return (
+                        <li key={room.id}>
+                          <strong>
+                            {room.number}
+                            {room.bedType === "double" ? " (doppia)" : ""}
+                            {room.large ? " extra" : ""}
+                          </strong>
+                          <span>{names.length ? names.join(" · ") : "—"}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
 function GuestPrintRow({
   stay,
   options,
@@ -115,7 +165,11 @@ function GuestPrintRow({
       )}
       {options.includeIntolerances && <td>{formatStayIntolerances(stay) || "—"}</td>}
       {options.includeGroups && (
-        <td>{stay.group ? `${stay.group.name} · ${stay.group.leaderName}` : "—"}</td>
+        <td>
+          {stay.group
+            ? `${stay.group.name}${stay.group.leaderName ? ` · referente ${stay.group.leaderName}` : ""}`
+            : "—"}
+        </td>
       )}
       {options.includeContact && <td>{guestContact(stay) || "—"}</td>}
       {options.includeNotes && <td>{stay.notes.trim() || "—"}</td>}
@@ -331,6 +385,10 @@ export function PrintPreviewContent({
             </section>
           )}
 
+          {(options.includeGuestList || options.includeRooms) && (
+            <PartyOccupantsPrint stays={snap.inHouse} />
+          )}
+
           {options.includeIntolerances &&
             !options.includeGuestList &&
             snap.intolerances.length > 0 && (
@@ -368,8 +426,8 @@ export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
     ...DEFAULT_PRINT_OPTIONS,
     anchorDate: defaultDate,
   });
+  const [scope, setScope] = useState<PrintScope>(DEFAULT_PRINT_SCOPE);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [dateOpen, setDateOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailStatus, setEmailStatus] = useState("");
@@ -384,19 +442,39 @@ export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
     if (emailOpen) setSelectedEmails([...staffEmails]);
   }, [emailOpen, staffEmails]);
 
-  const report = useMemo(() => buildPrintReport(stays, options), [stays, options]);
-  const quickDates = useMemo(() => {
-    const dayAfterTomorrow = addDays(todayIso(), 2);
-    return [
-      { id: "oggi", label: "Oggi", iso: todayIso() },
-      { id: "domani", label: "Domani", iso: addDays(todayIso(), 1) },
-      { id: "terzo", label: formatWeekdayIt(dayAfterTomorrow), iso: dayAfterTomorrow },
-    ];
-  }, []);
+  const periodDays = useMemo(
+    () => getPeriodDays(options.period, options.anchorDate, options.rangeDayCount),
+    [options.period, options.anchorDate, options.rangeDayCount],
+  );
+  const periodStays = useMemo(
+    () => stays.filter((s) => stayOverlapsPeriod(s, periodDays)),
+    [stays, periodDays],
+  );
+  const groupNames = useMemo(() => collectGroupNames(periodStays), [periodStays]);
+  const leaderNames = useMemo(() => collectLeaderNames(periodStays), [periodStays]);
+  const report = useMemo(() => buildPrintReport(stays, options, scope), [stays, options, scope]);
+
+  useEffect(() => {
+    setScope((s) => {
+      if (s.kind === "all") return s;
+      const names = s.kind === "group" ? groupNames : leaderNames;
+      if (!names.length) return s.value ? { ...s, value: "" } : s;
+      if (names.includes(s.value)) return s;
+      return { kind: s.kind, value: names[0]! };
+    });
+  }, [groupNames, leaderNames]);
 
   function setPeriod(period: ReportPeriod) {
     setOptions((o) => ({ ...o, period }));
-    if (period !== "day") setDateOpen(false);
+  }
+
+  function setScopeKind(kind: PrintScopeKind) {
+    if (kind === "all") {
+      setScope(DEFAULT_PRINT_SCOPE);
+      return;
+    }
+    const names = kind === "group" ? groupNames : leaderNames;
+    setScope({ kind, value: names[0] ?? "" });
   }
 
   function toggle(key: ToggleKey) {
@@ -464,7 +542,7 @@ export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
     <section className="panel print-panel">
       <header className="panel-head">
         <h2>Stampa report</h2>
-        <p className="muted">Scegli periodo e contenuti, poi anteprima o stampa.</p>
+        <p className="muted">Scegli periodo, filtro e contenuti, poi anteprima o stampa.</p>
       </header>
 
       <div className="print-config no-print">
@@ -484,45 +562,9 @@ export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
         </fieldset>
 
         {options.period === "day" && (
-          <div className="quick-report-day">
-            <div className="quick-report-day-row">
-              {quickDates.map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  className={options.anchorDate === d.iso ? "quick-day-btn active" : "quick-day-btn"}
-                  onClick={() => setOptions((o) => ({ ...o, anchorDate: d.iso }))}
-                >
-                  <span className="quick-day-main">{d.label}</span>
-                  <span className="quick-day-date">{formatDateIt(d.iso)}</span>
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`btn quick-day-cal-btn${dateOpen ? " active" : ""}`}
-                onClick={() => setDateOpen((v) => !v)}
-                aria-label="Apri calendario report"
-              >
-                📅
-              </button>
-            </div>
-            {dateOpen && (
-              <div className="date-popover" role="dialog" aria-label="Calendario report">
-                <DayPicker
-                  mode="single"
-                  locale={it}
-                  weekStartsOn={1}
-                  selected={isoToDate(options.anchorDate)}
-                  onSelect={(d) => {
-                    if (!d) return;
-                    setOptions((o) => ({ ...o, anchorDate: dateToIso(d) }));
-                    setDateOpen(false);
-                  }}
-                  defaultMonth={isoToDate(options.anchorDate)}
-                />
-              </div>
-            )}
-          </div>
+          <p className="muted print-day-from-header">
+            Data del report: <strong>{formatDateIt(options.anchorDate)}</strong> — si cambia in alto.
+          </p>
         )}
 
         {options.period !== "day" && (
@@ -556,6 +598,65 @@ export function PrintReportPanel({ stays, defaultDate = todayIso() }: Props) {
             </button>
           </div>
         )}
+
+        <fieldset className="segmented print-scope">
+          <legend>Filtra per</legend>
+          {(
+            [
+              { id: "all" as const, label: "Tutti" },
+              { id: "group" as const, label: "Gruppo" },
+              { id: "leader" as const, label: "Referente" },
+            ] as const
+          ).map((p) => (
+            <label key={p.id} className={scope.kind === p.id ? "seg active" : "seg"}>
+              <input
+                type="radio"
+                name="print-scope"
+                checked={scope.kind === p.id}
+                onChange={() => setScopeKind(p.id)}
+              />
+              {p.label}
+            </label>
+          ))}
+        </fieldset>
+
+        {scope.kind === "group" &&
+          (groupNames.length ? (
+            <label className="print-scope-pick">
+              Gruppo nel periodo
+              <select
+                value={scope.value}
+                onChange={(e) => setScope({ kind: "group", value: e.target.value })}
+              >
+                {groupNames.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="muted print-scope-empty">Nessun gruppo nel periodo scelto.</p>
+          ))}
+
+        {scope.kind === "leader" &&
+          (leaderNames.length ? (
+            <label className="print-scope-pick">
+              Referente nel periodo
+              <select
+                value={scope.value}
+                onChange={(e) => setScope({ kind: "leader", value: e.target.value })}
+              >
+                {leaderNames.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="muted print-scope-empty">Nessun referente nel periodo scelto.</p>
+          ))}
 
         <div className="print-toggles card inset">
           <h3>Contenuti</h3>

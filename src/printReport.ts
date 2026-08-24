@@ -1,10 +1,11 @@
 import { ROOMS } from "./data/rooms";
+import { isPartyLikeStay } from "./partyStay";
 import { getDayOccupancy, TOTAL_ROOMS } from "./roomAvailability";
 import type { GuestStay } from "./types";
 import { hasIntoleranceInfo } from "./intolerances";
 import { mealIncludedOnDay } from "./mealTiming";
-import { getPersonCount, mealPersonCount } from "./stayUtils";
-import { dateToIso, formatDateIt, isActiveOn, isoToDate } from "./utils";
+import { getPersonCount, isPlaceholderGroupName } from "./stayUtils";
+import { dateToIso, formatDateIt, isoToDate, stayOccupiesDay } from "./utils";
 
 export type ReportPeriod = "day" | "week" | "month" | "range";
 
@@ -110,32 +111,96 @@ function periodTitle(period: ReportPeriod, anchor: string, days: string[]): stri
 }
 
 function buildDaySnapshot(stays: GuestStay[], day: string): DaySnapshot {
-  const inHouse = stays.filter((s) => isActiveOn(s, day));
+  const inHouse = stays.filter((s) => stayOccupiesDay(s, day));
   const occupancy = getDayOccupancy(stays, day);
+  const lunch = stays.filter((s) => mealIncludedOnDay(s, day, "lunch"));
+  const dinner = stays.filter((s) => mealIncludedOnDay(s, day, "dinner"));
+  const intoleranceMap = new Map<string, GuestStay>();
+  for (const s of [...inHouse, ...lunch, ...dinner]) {
+    if (hasIntoleranceInfo(s)) intoleranceMap.set(s.id, s);
+  }
   return {
     day,
     occupancy: occupancy.occupiedCount,
     free: occupancy.freeCount,
     peopleInHouse: inHouse.reduce((n, s) => n + getPersonCount(s), 0),
-    lunchPeople: inHouse.reduce((n, s) => n + mealPersonCount(s, "lunch", day), 0),
-    dinnerPeople: inHouse.reduce((n, s) => n + mealPersonCount(s, "dinner", day), 0),
+    lunchPeople: lunch.reduce((n, s) => n + getPersonCount(s), 0),
+    dinnerPeople: dinner.reduce((n, s) => n + getPersonCount(s), 0),
     inHouse,
     arrivals: stays.filter((s) => s.checkIn === day),
     departures: stays.filter((s) => s.checkOut === day),
-    lunch: inHouse.filter((s) => mealIncludedOnDay(s, day, "lunch")),
-    dinner: inHouse.filter((s) => mealIncludedOnDay(s, day, "dinner")),
-    intolerances: inHouse.filter((s) => hasIntoleranceInfo(s)),
+    lunch,
+    dinner,
+    intolerances: [...intoleranceMap.values()],
   };
+}
+
+export type PrintScopeKind = "all" | "group" | "leader";
+
+export type PrintScope = {
+  kind: PrintScopeKind;
+  value: string;
+};
+
+export const DEFAULT_PRINT_SCOPE: PrintScope = { kind: "all", value: "" };
+
+export function stayOverlapsPeriod(stay: GuestStay, days: string[]): boolean {
+  if (!days.length) return false;
+  const start = days[0]!;
+  const end = days[days.length - 1]!;
+  return stay.checkIn <= end && stay.checkOut > start;
+}
+
+export function collectGroupNames(stays: GuestStay[]): string[] {
+  const names = new Set<string>();
+  for (const stay of stays) {
+    const name = stay.group?.name?.trim();
+    if (name && !isPlaceholderGroupName(name)) names.add(name);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, "it"));
+}
+
+export function stayLeaderName(stay: GuestStay): string {
+  const fromGroup = stay.group?.leaderName?.trim();
+  if (fromGroup) return fromGroup;
+  if (isPartyLikeStay(stay)) return stay.guestName.trim();
+  return "";
+}
+
+export function collectLeaderNames(stays: GuestStay[]): string[] {
+  const names = new Set<string>();
+  for (const stay of stays) {
+    const leader = stayLeaderName(stay);
+    if (leader) names.add(leader);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, "it"));
+}
+
+export function stayMatchesPrintScope(stay: GuestStay, scope: PrintScope): boolean {
+  if (scope.kind === "all") return true;
+  if (!scope.value.trim()) return false;
+  if (scope.kind === "group") {
+    return (stay.group?.name?.trim() ?? "") === scope.value;
+  }
+  return stayLeaderName(stay) === scope.value;
+}
+
+function scopeTitleSuffix(scope: PrintScope): string {
+  if (scope.kind === "group" && scope.value) return ` — ${scope.value}`;
+  if (scope.kind === "leader" && scope.value) return ` — referente ${scope.value}`;
+  return "";
 }
 
 export function buildPrintReport(
   stays: GuestStay[],
   options: PrintReportOptions,
+  scope: PrintScope = DEFAULT_PRINT_SCOPE,
 ): BuiltPrintReport {
   const days = getPeriodDays(options.period, options.anchorDate, options.rangeDayCount);
-  const snapshots = days.map((day) => buildDaySnapshot(stays, day));
+  const scoped = stays.filter((s) => stayMatchesPrintScope(s, scope));
+  const snapshots = days.map((day) => buildDaySnapshot(scoped, day));
   return {
-    title: periodTitle(options.period, options.anchorDate, days),
+    title: `${periodTitle(options.period, options.anchorDate, days)}${scopeTitleSuffix(scope)}`,
     periodLabel:
       options.period === "day"
         ? "Giornaliero"
@@ -164,7 +229,7 @@ export function guestContact(stay: GuestStay): string {
   if (stay.guestPhone?.trim()) parts.push(stay.guestPhone.trim());
   if (stay.guestEmail?.trim()) parts.push(stay.guestEmail.trim());
   if (stay.group?.leaderPhone?.trim() && stay.group.leaderName) {
-    parts.push(`capo: ${stay.group.leaderPhone.trim()}`);
+    parts.push(`referente: ${stay.group.leaderPhone.trim()}`);
   }
   return parts.join(" · ");
 }

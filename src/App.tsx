@@ -9,6 +9,7 @@ import { TodayReport } from "./components/TodayReport";
 import { RoomOverview } from "./components/RoomOverview";
 import { PlanningView } from "./components/PlanningView";
 import { PrintReportPanel } from "./components/PrintReportPanel";
+import { RoomStatusStrip } from "./components/RoomStatusStrip";
 import { ScheduledReportDueHost } from "./components/ScheduledReportDueHost";
 import { FontZoomButtons } from "./components/FontZoomButtons";
 import { SettingsView } from "./components/SettingsView";
@@ -146,7 +147,7 @@ function AppMain() {
   const [reportDay, setReportDay] = useState(todayIso());
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
-  const [searchOpen, setSearchOpen] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [searchEditing, setSearchEditing] = useState<GuestStay | null>(null);
 
   useAutoBackup(stays);
@@ -209,9 +210,12 @@ function AppMain() {
       )}
 
       <header className="topbar no-print">
-        <h1 className="app-title">Priorato</h1>
+        <div className="topbar-brand">
+          <h1 className="app-title">Priorato</h1>
+          {!inSettings && <RoomStatusStrip stays={stays} day={reportDay} />}
+        </div>
         <div className="topbar-actions">
-          {!inSettings && tab !== "stampa" && (
+          {!inSettings && (
             <QuickReportDayPicker value={reportDay} onChange={setReportDay} />
           )}
           <div className="topbar-icon-group">
@@ -261,6 +265,7 @@ function AppMain() {
                 onDraftChange={setSearchDraft}
                 onSearch={runSearch}
                 onClear={clearSearch}
+                autoFocus
               />
               {searchQuery && (
                 <div className="search-results-panel">
@@ -293,10 +298,15 @@ function AppMain() {
           <RegistrationForm stays={stays} onSaved={setStays} />
         )}
         {!inSettings && tab === "camere" && (
-          <RoomOverview stays={stays} day={reportDay} searchQuery={searchQuery} />
+          <RoomOverview
+            stays={stays}
+            day={reportDay}
+            searchQuery={searchQuery}
+            onEditStay={setSearchEditing}
+          />
         )}
         {!inSettings && tab === "pianificazione" && (
-          <PlanningView stays={stays} day={reportDay} />
+          <PlanningView stays={stays} day={reportDay} onEditStay={setSearchEditing} />
         )}
         {!inSettings && tab === "stampa" && (
           <PrintReportPanel stays={stays} defaultDate={reportDay} />

@@ -50,6 +50,12 @@ export const ROOMS: Room[] = [
   ...rangeRooms(218, 236, "nuova", 2, "Nuova"),
 ];
 
+/** Posti letto se le doppie sono usate in due. */
+export const MAX_PARTY_PEOPLE = ROOMS.reduce(
+  (n, r) => n + (r.bedType === "double" ? 2 : 1),
+  0,
+);
+
 export const DOUBLE_ROOM_IDS = new Set(
   ROOMS.filter((r) => r.bedType === "double").map((r) => r.id),
 );

@@ -1,4 +1,4 @@
-import type { BoardType, GuestStay } from "./types";
+import type { BoardType, DepartureMeal, GuestStay } from "./types";
 import { mealIncludedOnDay } from "./mealTiming";
 
 export function todayIso(): string {
@@ -41,20 +41,50 @@ export function parseDateIt(text: string): string | null {
   return iso;
 }
 
+export function addDaysIso(iso: string, days: number): string {
+  const d = isoToDate(iso);
+  if (!d) return iso;
+  d.setDate(d.getDate() + days);
+  return dateToIso(d);
+}
+
 export function isActiveOn(stay: GuestStay, day: string): boolean {
   return stay.checkIn <= day && day < stay.checkOut;
 }
 
-/** Sovrapposizione tra due soggiorni [checkIn, checkOut) */
+/** Partenza dopo pranzo/cena: le camere restano occupate il giorno di checkout. */
+export function stayKeepsRoomOnCheckout(stay: GuestStay): boolean {
+  return stay.departureMeal === "after_lunch" || stay.departureMeal === "after_dinner";
+}
+
+export function occupancyEndExclusive(stay: GuestStay): string {
+  return stayKeepsRoomOnCheckout(stay) ? addDaysIso(stay.checkOut, 1) : stay.checkOut;
+}
+
+/** Presente in casa quel giorno: notti + partenza tardiva il giorno di checkout. */
+export function stayOccupiesDay(stay: GuestStay, day: string): boolean {
+  return stay.checkIn <= day && day < occupancyEndExclusive(stay);
+}
+
+function intervalEndExclusive(checkOut: string, departureMeal?: DepartureMeal): string {
+  if (departureMeal === "after_lunch" || departureMeal === "after_dinner") {
+    return addDaysIso(checkOut, 1);
+  }
+  return checkOut;
+}
+
+/** Sovrapposizione camere, includendo partenze dopo pranzo/cena. */
 export function staysOverlap(
   checkIn: string,
   checkOut: string,
   stay: GuestStay,
   excludeId?: string,
+  newDepartureMeal?: DepartureMeal,
 ): boolean {
   if (excludeId && stay.id === excludeId) return false;
   if (!checkIn || !checkOut || checkOut <= checkIn) return false;
-  return checkIn < stay.checkOut && stay.checkIn < checkOut;
+  const newEnd = intervalEndExclusive(checkOut, newDepartureMeal);
+  return checkIn < occupancyEndExclusive(stay) && stay.checkIn < newEnd;
 }
 
 export function boardLabel(board: BoardType): string {
