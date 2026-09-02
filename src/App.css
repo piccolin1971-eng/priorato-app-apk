@@ -238,9 +238,9 @@ button.app-title-home:hover {
 
 .topbar-home-id {
   flex-direction: row;
-  align-items: flex-start;
   flex-wrap: nowrap;
-  gap: 0.75rem 0.9rem;
+  align-items: flex-start;
+  gap: 0.65rem 0.75rem;
 }
 
 .topbar-home-id .topbar-actions {
@@ -257,9 +257,10 @@ button.app-title-home:hover {
 
 .home-identity {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.8rem;
-  flex: 1;
+  gap: 0.5rem 0.8rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -268,7 +269,7 @@ button.app-title-home:hover {
   height: 8.75rem;
   border-radius: var(--radius);
   object-fit: cover;
-  flex-shrink: 0;
+  flex: 0 0 auto;
   border: 2px solid var(--line-strong);
   background: var(--surface);
 }
@@ -276,10 +277,37 @@ button.app-title-home:hover {
 .home-id-text {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 8.75rem;
-  gap: 0.35rem;
-  min-width: 0;
+  justify-content: flex-start;
+  gap: 0.22rem;
+  flex: 1 1 16rem;
+  min-width: min(16rem, 100%);
+}
+
+@media (max-width: 719px) {
+  .topbar-home-id {
+    position: relative;
+  }
+
+  .topbar-home-id .topbar-actions {
+    position: absolute;
+    top: 10px;
+    right: 0;
+    z-index: 1;
+    margin-left: 0;
+  }
+
+  .home-id-text {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
+@media (min-width: 720px) {
+  .home-id-text {
+    justify-content: space-between;
+    min-height: 8.75rem;
+    gap: 0.35rem;
+  }
 }
 
 .home-id-title {
@@ -287,34 +315,35 @@ button.app-title-home:hover {
   font-size: 1.18rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  line-height: 1.35;
+  line-height: 1.3;
   color: var(--ink);
+  text-wrap: balance;
 }
 
 .home-id-addr {
   margin: 0;
   font-size: 0.92rem;
   font-weight: 650;
-  line-height: 1.45;
+  line-height: 1.4;
   color: var(--muted);
+  text-wrap: pretty;
 }
 
 .home-id-link {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.4rem;
   max-width: 100%;
   color: var(--ink);
   text-decoration: none;
   font-size: 0.95rem;
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .home-id-link span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .home-id-link svg {
@@ -3188,6 +3217,7 @@ label.full-width {
     margin-left: auto;
     align-items: flex-start;
     justify-content: flex-end;
+    flex: 0 0 auto;
   }
 
   .topbar-home-id .topbar-icon-group {
