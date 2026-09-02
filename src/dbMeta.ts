@@ -46,6 +46,10 @@ function saveDbMeta(meta: DbMeta): void {
   localStorage.setItem(DB_META_KEY, JSON.stringify(meta));
 }
 
+export function applyDbMeta(meta: DbMeta): void {
+  saveDbMeta(meta);
+}
+
 export function recordDbChange(info: DbChangeInfo): DbMeta {
   const prev = loadDbMeta();
   const meta: DbMeta = {

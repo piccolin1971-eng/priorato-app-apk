@@ -33,6 +33,9 @@ export type StoredSettings = {
   googleDriveFolderId?: string;
   googleDriveConnected?: boolean;
   googleDriveAccountEmail?: string;
+  syncScriptUrl?: string;
+  syncPassword?: string;
+  lastStationSyncAt?: string;
   confirmBeforeDelete?: boolean;
   appLockEnabled?: boolean;
   appLockPassword?: string;
@@ -57,6 +60,9 @@ type SettingsState = {
   googleDriveFolderId: string;
   googleDriveConnected: boolean;
   googleDriveAccountEmail: string;
+  syncScriptUrl: string;
+  syncPassword: string;
+  lastStationSyncAt: string;
   confirmBeforeDelete: boolean;
   appLockEnabled: boolean;
   appLockPassword: string;
@@ -87,6 +93,9 @@ type SettingsState = {
   setGoogleDriveClientId: (value: string) => void;
   setGoogleDriveFolderId: (value: string) => void;
   setGoogleDriveConnected: (connected: boolean, email?: string) => void;
+  setSyncScriptUrl: (value: string) => void;
+  setSyncPassword: (value: string) => void;
+  setLastStationSyncAt: (iso: string) => void;
   setConfirmBeforeDelete: (value: boolean) => void;
   decreaseFont: () => void;
   increaseFont: () => void;
@@ -144,6 +153,9 @@ function toPersist(state: {
   googleDriveFolderId: string;
   googleDriveConnected: boolean;
   googleDriveAccountEmail: string;
+  syncScriptUrl: string;
+  syncPassword: string;
+  lastStationSyncAt: string;
   confirmBeforeDelete: boolean;
   appLockEnabled: boolean;
   appLockPassword: string;
@@ -191,6 +203,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [googleDriveAccountEmail, setGoogleDriveAccountEmailState] = useState(
     () => initial.googleDriveAccountEmail ?? "",
   );
+  const [syncScriptUrl, setSyncScriptUrlState] = useState(
+    () => initial.syncScriptUrl ?? "",
+  );
+  const [syncPassword, setSyncPasswordState] = useState(
+    () => initial.syncPassword ?? "",
+  );
+  const [lastStationSyncAt, setLastStationSyncAtState] = useState(
+    () => initial.lastStationSyncAt ?? "",
+  );
   const [confirmBeforeDelete, setConfirmBeforeDeleteState] = useState(
     () => initial.confirmBeforeDelete ?? true,
   );
@@ -237,6 +258,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         googleDriveFolderId,
         googleDriveConnected,
         googleDriveAccountEmail,
+        syncScriptUrl,
+        syncPassword,
+        lastStationSyncAt,
         confirmBeforeDelete,
         appLockEnabled,
         appLockPassword,
@@ -261,6 +285,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     googleDriveFolderId,
     googleDriveConnected,
     googleDriveAccountEmail,
+    syncScriptUrl,
+    syncPassword,
+    lastStationSyncAt,
     confirmBeforeDelete,
     appLockEnabled,
     appLockPassword,
@@ -287,6 +314,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setGoogleDriveConnectedState(connected);
     setGoogleDriveAccountEmailState(email ?? "");
   };
+  const setSyncScriptUrl = (value: string) => setSyncScriptUrlState(value);
+  const setSyncPassword = (value: string) => setSyncPasswordState(value);
+  const setLastStationSyncAt = useCallback((iso: string) => setLastStationSyncAtState(iso), []);
   const setConfirmBeforeDelete = (value: boolean) => setConfirmBeforeDeleteState(value);
   const setAppLockEnabled = (enabled: boolean) => setAppLockEnabledState(enabled);
   const setAppLockPassword = (password: string) => setAppLockPasswordState(password);
@@ -319,6 +349,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         googleDriveFolderId,
         googleDriveConnected,
         googleDriveAccountEmail,
+        syncScriptUrl,
+        syncPassword,
+        lastStationSyncAt,
         confirmBeforeDelete,
         appLockEnabled,
         appLockPassword,
@@ -342,6 +375,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setGoogleDriveClientId,
         setGoogleDriveFolderId,
         setGoogleDriveConnected,
+        setSyncScriptUrl,
+        setSyncPassword,
+        setLastStationSyncAt,
         setConfirmBeforeDelete,
         setAppLockEnabled,
         setAppLockPassword,

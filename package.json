@@ -1,13 +1,18 @@
 {
   "name": "priorato-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Priorato — Accoglienza ospiti",
+  "author": "Priorato",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "electron .",
+    "electron:build": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
@@ -23,8 +28,46 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
     "oxlint": "^1.71.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
+  },
+  "build": {
+    "appId": "com.piccolin.priorato",
+    "productName": "Priorato Accoglienza",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "shortcutName": "Priorato Accoglienza",
+      "uninstallDisplayName": "Priorato Accoglienza",
+      "artifactName": "Priorato-Accoglienza-Setup-${version}.exe"
+    }
   }
 }

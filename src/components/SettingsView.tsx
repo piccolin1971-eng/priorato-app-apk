@@ -2,13 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import type { GuestStay } from "../types";
 import {
   BACKUP_INTERVALS,
-  createBackupBundle,
   downloadBackupFile,
   importBackupStays,
   loadAutoBackupLocal,
   parseBackupBundle,
 } from "../backup";
-import { connectGoogleDrive, syncBackupToGoogleDrive } from "../googleDrive";
+import { pullStations, pushStations, isSyncConfigured, loadSyncStatus } from "../stationSync";
 import { formatDbChangeSummary, loadDbMeta } from "../dbMeta";
 import { DEVICE_PRESETS } from "../device";
 import { downloadStaysCsv } from "../exportCsv";
@@ -40,12 +39,11 @@ export function SettingsView({ stays, onStaysChange, onBack }: Props) {
     autoBackupIntervalHours,
     setAutoBackupIntervalHours,
     lastAutoBackupAt,
-    googleDriveClientId,
-    setGoogleDriveClientId,
-    googleDriveFolderId,
-    setGoogleDriveFolderId,
-    googleDriveConnected,
-    googleDriveAccountEmail,
+    syncScriptUrl,
+    setSyncScriptUrl,
+    syncPassword,
+    setSyncPassword,
+    lastStationSyncAt,
     confirmBeforeDelete,
     setConfirmBeforeDelete,
     appLockEnabled,
@@ -134,28 +132,29 @@ export function SettingsView({ stays, onStaysChange, onBack }: Props) {
     }
   }
 
-  async function handleDriveConnect() {
+  async function handleSyncTest() {
+    if (!isSyncConfigured(syncScriptUrl, syncPassword)) {
+      showStatus("Inserisci URL dello script e password.");
+      return;
+    }
     setDriveBusy(true);
-    const res = await connectGoogleDrive({
-      clientId: googleDriveClientId,
-      folderId: googleDriveFolderId,
-      connected: googleDriveConnected,
-      accountEmail: googleDriveAccountEmail,
-    });
-    showStatus(res.message);
+    const res = await pullStations(syncScriptUrl, syncPassword);
+    showStatus(
+      res.ok
+        ? `Collegato. ${res.payload?.stays.length ?? 0} soggiorni sul file condiviso.`
+        : res.message,
+    );
     setDriveBusy(false);
   }
 
-  async function handleDriveSync() {
+  async function handleSyncNow() {
+    if (!isSyncConfigured(syncScriptUrl, syncPassword)) {
+      showStatus("Inserisci URL dello script e password.");
+      return;
+    }
     setDriveBusy(true);
-    const bundle = createBackupBundle(stays);
-    const res = await syncBackupToGoogleDrive(bundle, {
-      clientId: googleDriveClientId,
-      folderId: googleDriveFolderId,
-      connected: googleDriveConnected,
-      accountEmail: googleDriveAccountEmail,
-    });
-    showStatus(res.message);
+    const res = await pushStations(syncScriptUrl, syncPassword, stays, true);
+    showStatus(res.ok ? "Dati di questa postazione inviati." : res.message);
     setDriveBusy(false);
   }
 
@@ -278,43 +277,50 @@ export function SettingsView({ stays, onStaysChange, onBack }: Props) {
       </div>
 
       <div className="settings-section card inset">
-        <h3>Google Drive (preparazione)</h3>
-        <p className="muted settings-summary">Sezione pronta per futura sincronizzazione cloud.</p>
+        <h3>Sincronizzazione postazioni</h3>
+        <p className="muted settings-summary">
+          Stesso URL e stessa password su PC, telefono e tablet. Il nome postazione sta più sotto.
+        </p>
         {showDetails && (
           <p className="muted settings-desc">
-            Inserite qui i dati del progetto Google quando sarà pronto. La sincronizzazione cloud non è
-            ancora attiva, ma le impostazioni verranno riutilizzate.
+            Lo script Google sta in apps-script/PrioratoSync.gs: incollalo su script.google.com, cambia
+            la password, distribuiscilo come App web (esegui come te, accesso Chiunque) e incolla qui
+            l’URL. Su Drive si crea la cartella «Priorato Accoglienza».
           </p>
         )}
         <label>
-          Client ID OAuth
+          URL script
           <input
-            type="text"
-            value={googleDriveClientId}
-            onChange={(e) => setGoogleDriveClientId(e.target.value)}
-            placeholder="es. 123456.apps.googleusercontent.com"
+            type="url"
+            value={syncScriptUrl}
+            onChange={(e) => setSyncScriptUrl(e.target.value)}
+            placeholder="https://script.google.com/macros/s/…/exec"
             autoComplete="off"
+            spellCheck={false}
           />
         </label>
         <label>
-          ID cartella Drive (opzionale)
+          Password sync
           <input
-            type="text"
-            value={googleDriveFolderId}
-            onChange={(e) => setGoogleDriveFolderId(e.target.value)}
-            placeholder="ID cartella condivisa"
+            type="password"
+            value={syncPassword}
+            onChange={(e) => setSyncPassword(e.target.value)}
+            placeholder="la stessa scritta nello script"
             autoComplete="off"
           />
         </label>
-        {googleDriveConnected && googleDriveAccountEmail && (
-          <p className="muted settings-meta">Account collegato: {googleDriveAccountEmail}</p>
-        )}
+        <p className="muted settings-meta">
+          {lastStationSyncAt
+            ? `Ultimo allineamento: ${formatDateIt(lastStationSyncAt.slice(0, 10))} alle ${new Date(lastStationSyncAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`
+            : "Non ancora allineata."}
+          {loadSyncStatus()?.ok === false ? ` · ${loadSyncStatus()?.message}` : ""}
+        </p>
         <div className="settings-actions">
-          <button type="button" className="btn ghost" disabled={driveBusy} onClick={handleDriveConnect}>
-            Collega Google
+          <button type="button" className="btn ghost" disabled={driveBusy} onClick={handleSyncTest}>
+            Prova collegamento
           </button>
-          <button type="button" className="btn ghost" disabled={driveBusy} onClick={handleDriveSync}>
-            Sincronizza ora
+          <button type="button" className="btn ghost" disabled={driveBusy} onClick={handleSyncNow}>
+            Invia dati di questa postazione
           </button>
         </div>
       </div>

@@ -12,6 +12,7 @@ import { PrintReportPanel } from "./components/PrintReportPanel";
 import { RoomStatusStrip } from "./components/RoomStatusStrip";
 import { ScheduledReportDueHost } from "./components/ScheduledReportDueHost";
 import { FontZoomButtons } from "./components/FontZoomButtons";
+import { HomeHub, HomeIdentity } from "./components/HomeHub";
 import { SettingsView } from "./components/SettingsView";
 import { GuestSearchBar, SearchIcon } from "./components/GuestSearchBar";
 import { GuestSearchResults } from "./components/GuestSearchResults";
@@ -19,13 +20,16 @@ import { EditStayModal } from "./components/EditStayModal";
 import { AppLockScreen } from "./components/AppLockScreen";
 import { DbChangeBanner } from "./components/DbChangeBanner";
 import { useAutoBackup } from "./useAutoBackup";
+import { useStationSync } from "./useStationSync";
 import { useDbChangeNotify } from "./useDbChangeNotify";
 import { useSettings } from "./SettingsContext";
 import { filterStaysByQuery } from "./stayUtils";
 import { dateToIso, formatDateIt, formatWeekdayIt, isoToDate, todayIso } from "./utils";
+import prioratoIcon from "./assets/priorato-icon.png";
 import "./App.css";
 
 const TABS: { id: TabId; label: string }[] = [
+  { id: "home", label: "Home" },
   { id: "oggi", label: "Oggi" },
   { id: "registra", label: "Registra" },
   { id: "camere", label: "Camere" },
@@ -141,8 +145,8 @@ export default function App() {
 }
 
 function AppMain() {
-  const [tab, setTab] = useState<TabId>("oggi");
-  const returnTabRef = useRef<TabId>("oggi");
+  const [tab, setTab] = useState<TabId>("home");
+  const returnTabRef = useRef<TabId>("home");
   const [stays, setStays] = useState<GuestStay[]>(() => loadStays());
   const [reportDay, setReportDay] = useState(todayIso());
   const [searchQuery, setSearchQuery] = useState("");
@@ -151,6 +155,7 @@ function AppMain() {
   const [searchEditing, setSearchEditing] = useState<GuestStay | null>(null);
 
   useAutoBackup(stays);
+  const stationSync = useStationSync({ stays, setStays });
 
   const reloadStays = useCallback(() => setStays(loadStays()), []);
   const dbNotify = useDbChangeNotify({ onReloadStays: reloadStays });
@@ -172,7 +177,7 @@ function AppMain() {
   function runSearch() {
     setSearchQuery(searchDraft.trim());
     setSearchOpen(true);
-    if (tab !== "oggi" && tab !== "camere") setTab("oggi");
+    if (tab !== "home" && tab !== "oggi" && tab !== "camere") setTab("oggi");
   }
 
   function clearSearch() {
@@ -182,10 +187,11 @@ function AppMain() {
 
   function handleSearchSelect(stay: GuestStay) {
     setSearchEditing(stay);
-    setTab("oggi");
+    if (tab !== "home") setTab("oggi");
   }
 
   const inSettings = tab === "impostazioni";
+  const onHome = tab === "home";
 
   return (
     <div className="app">
@@ -201,6 +207,35 @@ function AppMain() {
         />
       )}
 
+      {stationSync.notice && (
+        <div className="db-change-banner no-print" role="status" aria-live="polite">
+          <div className="db-change-banner-body">
+            <strong>
+              {stationSync.notice.kind === "conflict"
+                ? "Un’altra postazione ha salvato"
+                : "Dati da un’altra postazione"}
+            </strong>
+            <p className="db-change-banner-detail">{stationSync.notice.summary}</p>
+          </div>
+          <div className="db-change-banner-actions">
+            {stationSync.notice.kind === "conflict" ? (
+              <>
+                <button type="button" className="btn primary small" onClick={stationSync.takeTheirs}>
+                  Prendi i suoi
+                </button>
+                <button type="button" className="btn ghost small" onClick={() => void stationSync.keepMine()}>
+                  Tieni i tuoi
+                </button>
+              </>
+            ) : (
+              <button type="button" className="btn ghost small" onClick={stationSync.dismissNotice}>
+                Ho visto
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {dbNotify.showBanner && (
         <DbChangeBanner
           summary={dbNotify.bannerSummary}
@@ -209,13 +244,31 @@ function AppMain() {
         />
       )}
 
-      <header className="topbar no-print">
-        <div className="topbar-brand">
-          <h1 className="app-title">Priorato</h1>
-          {!inSettings && <RoomStatusStrip stays={stays} day={reportDay} />}
-        </div>
+      <header className={`topbar no-print${onHome && !inSettings ? " topbar-home-id" : ""}`}>
+        {onHome && !inSettings ? (
+          <HomeIdentity />
+        ) : (
+          <div className="topbar-brand">
+            <img className="app-logo" src={prioratoIcon} alt="" width={36} height={36} />
+            {inSettings ? (
+              <h1 className="app-title">Priorato</h1>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="app-title app-title-home"
+                  onClick={() => setTab("home")}
+                  title="Torna alla home"
+                >
+                  Priorato
+                </button>
+                <RoomStatusStrip stays={stays} day={reportDay} />
+              </>
+            )}
+          </div>
+        )}
         <div className="topbar-actions">
-          {!inSettings && (
+          {!inSettings && !onHome && (
             <QuickReportDayPicker value={reportDay} onChange={setReportDay} />
           )}
           <div className="topbar-icon-group">
@@ -235,28 +288,30 @@ function AppMain() {
 
       {!inSettings && (
         <>
-          <nav className="tabs no-print" aria-label="Sezioni">
-            {TABS.map((t) => (
+          {!onHome && (
+            <nav className="tabs no-print" aria-label="Sezioni">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={tab === t.id ? "tab active" : "tab"}
+                  onClick={() => setTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
               <button
-                key={t.id}
                 type="button"
-                className={tab === t.id ? "tab active" : "tab"}
-                onClick={() => setTab(t.id)}
+                className={`tab tab-search${searchOpen ? " active" : ""}`}
+                onClick={() => setSearchOpen((open) => !open)}
+                title="Mostra o nascondi ricerca"
+                aria-label="Ricerca ospiti"
+                aria-expanded={searchOpen}
               >
-                {t.label}
+                <SearchIcon />
               </button>
-            ))}
-            <button
-              type="button"
-              className={`tab tab-search${searchOpen ? " active" : ""}`}
-              onClick={() => setSearchOpen((open) => !open)}
-              title="Mostra o nascondi ricerca"
-              aria-label="Ricerca ospiti"
-              aria-expanded={searchOpen}
-            >
-              <SearchIcon />
-            </button>
-          </nav>
+            </nav>
+          )}
           {searchOpen && (
             <div className="tab-search-panel no-print">
               <GuestSearchBar
@@ -284,6 +339,18 @@ function AppMain() {
       <main className="main">
         {inSettings && (
           <SettingsView stays={stays} onStaysChange={setStays} onBack={closeSettings} />
+        )}
+        {!inSettings && onHome && (
+          <HomeHub
+            stays={stays}
+            day={reportDay}
+            dayPicker={<QuickReportDayPicker value={reportDay} onChange={setReportDay} />}
+            searchQuery={searchQuery}
+            onChange={setStays}
+            onOpenTab={setTab}
+            onOpenSearch={() => setSearchOpen(true)}
+            onOpenSettings={openSettings}
+          />
         )}
         {!inSettings && tab === "oggi" && (
           <TodayReport
@@ -315,9 +382,9 @@ function AppMain() {
 
       <ScheduledReportDueHost stays={stays} />
 
-      {!inSettings && (
+      {!inSettings && !onHome && (
         <footer className="footer no-print">
-          Vecchia 13 camere · Nuova 38 camere · Dati in locale (demo)
+          Parte vecchia 13 camere · Parte nuova 38 camere · Dati in locale (demo)
         </footer>
       )}
     </div>

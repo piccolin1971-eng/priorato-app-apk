@@ -15,6 +15,14 @@ function sectionKey(r: Room): string {
   return `${r.zone}-${r.floor}`;
 }
 
+function sectionPref(key: string): number {
+  if (key === "vecchia-1") return 0;
+  if (key === "vecchia-2") return 1;
+  if (key === "nuova-1") return 2;
+  if (key === "nuova-2") return 3;
+  return 9;
+}
+
 function sectionTitleFor(key: string): string {
   for (const sec of ROOM_SECTIONS) {
     if (ROOMS.some((r) => sectionKey(r) === key && sec.filter(r))) return sec.title;
@@ -184,7 +192,7 @@ export function assignNearbyPartyRooms(
     const planned = planInSection(doubles, singles, couplesCount, singlesCount);
     if (!planned) continue;
     const spread = scoreCluster(planned);
-    if (!best || spread < best.spread) {
+    if (!best || spread < best.spread || (spread === best.spread && sectionPref(key) < sectionPref(best.key))) {
       best = { rooms: planned, key, spread };
     }
   }

@@ -8,19 +8,25 @@ function bedTypeFor(number: number): "single" | "double" {
   return DOUBLE_NUMBERS.has(number) ? "double" : "single";
 }
 
-function rangeRooms(
-  from: number,
-  to: number,
-  zone: Zone,
-  floor: 1 | 2,
-  zoneLabel: string,
-): Room[] {
+export function zoneFloorTitle(zone: Zone, floor: 1 | 2): string {
+  const parte = zone === "vecchia" ? "Parte vecchia" : "Parte nuova";
+  return `${parte} ${floor}° piano`;
+}
+
+/** Zone più piccole (parte vecchia) prima: per riscaldamento e proposte camera. */
+export function sectionPreferenceRank(zone: Zone, floor: 1 | 2): number {
+  if (zone === "vecchia") return floor === 1 ? 0 : 1;
+  return floor === 1 ? 2 : 3;
+}
+
+function rangeRooms(from: number, to: number, zone: Zone, floor: 1 | 2): Room[] {
   const rooms: Room[] = [];
+  const zoneTitle = zoneFloorTitle(zone, floor);
   for (let num = from; num <= to; num++) {
     const bedType = bedTypeFor(num);
     rooms.push({
       id: String(num),
-      label: `${zoneLabel} · P${floor} · ${num}${bedType === "double" ? " (doppia)" : ""}`,
+      label: `${zoneTitle} · ${num}${bedType === "double" ? " (doppia)" : ""}`,
       zone,
       floor,
       number: num,
@@ -30,10 +36,10 @@ function rangeRooms(
   return rooms;
 }
 
-/** 106: extra (camera ampia), fisicamente in Vecchia P1 — singola */
+/** 106: extra (camera ampia), fisicamente in Parte vecchia 1° piano — singola */
 const EXTRA_ROOM: Room = {
   id: "106",
-  label: "Vecchia · P1 · Extra 106",
+  label: `${zoneFloorTitle("vecchia", 1)} · Extra 106`,
   zone: "vecchia",
   floor: 1,
   number: 106,
@@ -41,13 +47,13 @@ const EXTRA_ROOM: Room = {
   large: true,
 };
 
-/** Vecchia P1: 106 + 112–117 · P2: 212–217 · Nuova P1: 118–136 · P2: 218–236 */
+/** Parte vecchia 1°: 106 + 112–117 · 2°: 212–217 · Parte nuova 1°: 118–136 · 2°: 218–236 */
 export const ROOMS: Room[] = [
   EXTRA_ROOM,
-  ...rangeRooms(112, 117, "vecchia", 1, "Vecchia"),
-  ...rangeRooms(212, 217, "vecchia", 2, "Vecchia"),
-  ...rangeRooms(118, 136, "nuova", 1, "Nuova"),
-  ...rangeRooms(218, 236, "nuova", 2, "Nuova"),
+  ...rangeRooms(112, 117, "vecchia", 1),
+  ...rangeRooms(212, 217, "vecchia", 2),
+  ...rangeRooms(118, 136, "nuova", 1),
+  ...rangeRooms(218, 236, "nuova", 2),
 ];
 
 /** Posti letto se le doppie sono usate in due. */
@@ -130,25 +136,25 @@ export const ROOM_SECTIONS: {
 }[] = [
   {
     id: "vecchia-p1",
-    title: "Vecchia · P1",
+    title: zoneFloorTitle("vecchia", 1),
     range: "106 (extra), 112–117",
     filter: (r) => r.zone === "vecchia" && r.floor === 1,
   },
   {
     id: "vecchia-p2",
-    title: "Vecchia · P2",
+    title: zoneFloorTitle("vecchia", 2),
     range: "212–217",
     filter: (r) => r.zone === "vecchia" && r.floor === 2,
   },
   {
     id: "nuova-p1",
-    title: "Nuova · P1",
+    title: zoneFloorTitle("nuova", 1),
     range: "118–136",
     filter: (r) => r.zone === "nuova" && r.floor === 1,
   },
   {
     id: "nuova-p2",
-    title: "Nuova · P2",
+    title: zoneFloorTitle("nuova", 2),
     range: "218–236",
     filter: (r) => r.zone === "nuova" && r.floor === 2,
   },

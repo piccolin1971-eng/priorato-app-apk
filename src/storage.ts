@@ -12,6 +12,11 @@ function writeStays(stays: GuestStay[]): void {
   localStorage.setItem(KEY, JSON.stringify(stays));
 }
 
+/** Scrive i soggiorni senza aumentare la revisione locale (arrivo da sync). */
+export function writeStaysOnly(stays: GuestStay[]): void {
+  writeStays(migrateStays(stays));
+}
+
 export function saveStays(stays: GuestStay[], change?: DbChangeInfo): void {
   writeStays(stays);
   if (change) recordDbChange(change);

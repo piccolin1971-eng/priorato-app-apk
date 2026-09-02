@@ -3,6 +3,8 @@ const SETTINGS_KEY = "priorato-settings-v1";
 export const DEVICE_PRESETS = [
   "Portineria",
   "PC Priorato",
+  "Cellulare",
+  "Tablet",
   "Tablet cucina",
   "Tablet accoglienza",
 ] as const;

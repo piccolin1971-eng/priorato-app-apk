@@ -1,5 +1,5 @@
 import type { DepartureMeal, GuestStay, Room } from "./types";
-import { ROOMS, normalizeRoomId } from "./data/rooms";
+import { ROOMS, ROOM_SECTIONS, normalizeRoomId, sectionPreferenceRank } from "./data/rooms";
 import { pickDefaultRoom } from "./roomSelect";
 import { departureMealLabel } from "./mealTiming";
 import { getStayRoomIds, stayDisplayName } from "./stayUtils";
@@ -52,6 +52,48 @@ export function pickFirstFreeRoom(
 ): string {
   const rooms = getAvailableRooms(stays, checkIn, checkOut, undefined, bedType);
   return pickDefaultRoom(rooms);
+}
+
+function rankSection(id: string): number {
+  const sec = ROOM_SECTIONS.find((s) => s.id === id);
+  const sample = sec ? ROOMS.find(sec.filter) : undefined;
+  if (!sample) return 9;
+  return sectionPreferenceRank(sample.zone, sample.floor);
+}
+
+/** Camera libera nel piano già occupato (riscaldamento). A parità, predilige la parte vecchia (zone più piccole). */
+export function suggestHeatedRoom(
+  stays: GuestStay[],
+  checkIn: string,
+  checkOut: string,
+  bedType?: Room["bedType"],
+  departureMeal?: DepartureMeal,
+): string {
+  const available = getAvailableRooms(
+    stays,
+    checkIn,
+    checkOut,
+    undefined,
+    bedType,
+    departureMeal,
+  );
+  if (available.length === 0) return "";
+  if (!checkIn) return pickDefaultRoom(available);
+
+  const occ = getDayOccupancy(stays, checkIn);
+  const scored = ROOM_SECTIONS.map((sec) => {
+    const sectionRooms = ROOMS.filter(sec.filter);
+    const occupied = sectionRooms.filter((r) => occ.stayByRoom.has(r.id)).length;
+    const free = available.filter((r) => sec.filter(r) && r.id !== "106");
+    return { id: sec.id, occupied, free };
+  }).filter((s) => s.free.length > 0);
+
+  scored.sort((a, b) => {
+    if (b.occupied !== a.occupied) return b.occupied - a.occupied;
+    return rankSection(a.id) - rankSection(b.id);
+  });
+
+  return scored[0]?.free[0]?.id ?? pickDefaultRoom(available);
 }
 
 export function countOccupiedOnDay(stays: GuestStay[], day: string): number {

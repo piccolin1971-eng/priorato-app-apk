@@ -10,9 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+release
 *.local
 .priorato-browser
 priorato-server.log
+build/ico-sizes/
 
 # Editor directories and files
 .vscode/*

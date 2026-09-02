@@ -24,6 +24,8 @@ type Props = {
   searchQuery?: string;
   onChange: (stays: GuestStay[]) => void;
   onOpenRooms?: () => void;
+  /** Sulla home: niente titolo "Report del…", stessa maschera di numeri. */
+  embedded?: boolean;
 };
 
 const SECTION = {
@@ -148,7 +150,14 @@ function MovementStatButton({
   );
 }
 
-export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChange, onOpenRooms }: Props) {
+export function TodayReport({
+  stays,
+  day = todayIso(),
+  searchQuery = "",
+  onChange,
+  onOpenRooms,
+  embedded = false,
+}: Props) {
   const [editing, setEditing] = useState<GuestStay | null>(null);
   const [openSection, setOpenSection] = useState<OpenSection>("none");
   const { confirmBeforeDelete } = useSettings();
@@ -226,7 +235,7 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
   }
 
   return (
-    <section className="panel">
+    <section className={`panel${embedded ? " today-report-home" : ""}`}>
       {editing && (
         <EditStayModal
           stay={editing}
@@ -238,10 +247,13 @@ export function TodayReport({ stays, day = todayIso(), searchQuery = "", onChang
           }}
         />
       )}
-      <header className="panel-head">
-        <h2>Report del {formatDateIt(day)}</h2>
-        {searching && <p className="muted">Filtro ricerca attivo.</p>}
-      </header>
+      {!embedded && (
+        <header className="panel-head">
+          <h2>Report del {formatDateIt(day)}</h2>
+          {searching && <p className="muted">Filtro ricerca attivo.</p>}
+        </header>
+      )}
+      {embedded && searching && <p className="muted">Filtro ricerca attivo.</p>}
 
       <div className="today-quick-filters">
         <button

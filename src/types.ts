@@ -80,4 +80,11 @@ export interface GuestStay {
   lastModifiedByDevice?: string;
 }
 
-export type TabId = "oggi" | "registra" | "camere" | "pianificazione" | "stampa" | "impostazioni";
+export type TabId =
+  | "home"
+  | "oggi"
+  | "registra"
+  | "camere"
+  | "pianificazione"
+  | "stampa"
+  | "impostazioni";
