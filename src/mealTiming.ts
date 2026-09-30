@@ -25,6 +25,12 @@ export function mealIncludedOnDay(stay: GuestStay, day: string, meal: "lunch" | 
   const base = meal === "lunch" ? stay.lunch : stay.dinner;
   if (!base) return false;
 
+  // Solo pranzo/cena (senza pernotto): intervallo inclusivo sul giorno.
+  if (stay.kind === "meal") {
+    if (stay.checkIn === stay.checkOut) return day === stay.checkIn;
+    return stay.checkIn <= day && day <= stay.checkOut;
+  }
+
   const overnight = stay.checkIn <= day && day < stay.checkOut;
   const checkoutDay = stay.checkOut === day;
   if (!overnight && !checkoutDay) return false;

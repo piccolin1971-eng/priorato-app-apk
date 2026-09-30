@@ -11,6 +11,8 @@ type Props = {
   stays: GuestStay[];
   day?: string;
   onEditStay?: (stay: GuestStay) => void;
+  /** Registra subito su una camera libera (date dal controllo disponibilità o dal giorno selezionato). */
+  onRegisterRoom?: (opts: { roomId: string; checkIn: string; checkOut: string }) => void;
 };
 
 type ViewMode = "mese" | "settimana";
@@ -83,7 +85,7 @@ function defaultCheckOut(checkIn: string): string {
   return dateToIso(d);
 }
 
-export function PlanningView({ stays, day = todayIso(), onEditStay }: Props) {
+export function PlanningView({ stays, day = todayIso(), onEditStay, onRegisterRoom }: Props) {
   const today = todayIso();
   const [viewMode, setViewMode] = useState<ViewMode>("mese");
   const [cursor, setCursor] = useState(() => isoToDate(day) ?? isoToDate(today) ?? new Date());
@@ -156,7 +158,10 @@ export function PlanningView({ stays, day = todayIso(), onEditStay }: Props) {
     <section className="panel">
       <header className="panel-head">
         <h2>Occupazione/Disponibilità</h2>
-        <p className="muted">Occupazione mese per mese o settimana per settimana — verifica posti senza registrare.</p>
+        <p className="muted">
+          Tocca un giorno per il dettaglio. Sulle camere libere: tap per registrare lì; su quelle
+          occupate: tap per modificare l&apos;ospite.
+        </p>
       </header>
 
       <div className="card inset plan-check">
@@ -330,10 +335,13 @@ export function PlanningView({ stays, day = todayIso(), onEditStay }: Props) {
                   {sectionRooms.map((room) => {
                     const stay = stayByRoom.get(room.id);
                     const markerCount = room.bedType === "double" ? 2 : 1;
-                    const className = `${stay ? "plan-room occupied" : "plan-room free"}${room.large ? " plan-room-large" : ""}${stay && onEditStay ? " plan-room-clickable" : ""}`;
+                    const clickable = Boolean(stay ? onEditStay : onRegisterRoom);
+                    const className = `${stay ? "plan-room occupied" : "plan-room free"}${room.large ? " plan-room-large" : ""}${clickable ? " plan-room-clickable" : ""}`;
                     const title = stay
-                      ? `${stayDisplayName(stay)} · dal ${formatDateIt(stay.checkIn)} al ${formatDateIt(stay.checkOut)}`
-                      : "Libera";
+                      ? `${stayDisplayName(stay)} · dal ${formatDateIt(stay.checkIn)} al ${formatDateIt(stay.checkOut)} — modifica`
+                      : onRegisterRoom
+                        ? `Libera — registra su camera ${room.number}`
+                        : "Libera";
                     const body = (
                       <>
                         <div
@@ -374,6 +382,26 @@ export function PlanningView({ stays, day = todayIso(), onEditStay }: Props) {
                           className={className}
                           title={title}
                           onClick={() => onEditStay(stay)}
+                        >
+                          {body}
+                        </button>
+                      );
+                    }
+                    if (!stay && onRegisterRoom) {
+                      return (
+                        <button
+                          key={room.id}
+                          type="button"
+                          className={className}
+                          title={title}
+                          onClick={() => {
+                            const periodOk = Boolean(checkIn && checkOut && checkOut > checkIn);
+                            onRegisterRoom({
+                              roomId: room.id,
+                              checkIn: periodOk ? checkIn : selectedDay,
+                              checkOut: periodOk ? checkOut : defaultCheckOut(selectedDay),
+                            });
+                          }}
                         >
                           {body}
                         </button>

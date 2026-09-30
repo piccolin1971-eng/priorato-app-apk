@@ -53,6 +53,10 @@ export function stayDisplayName(stay: GuestStay): string {
 }
 
 export function stayRoomsLabel(stay: GuestStay): string {
+  if (stay.kind === "meal") {
+    const meals = [stay.lunch ? "pranzo" : "", stay.dinner ? "cena" : ""].filter(Boolean);
+    return meals.length ? `Solo ${meals.join(" e ")}` : "Solo pasti";
+  }
   const ids = getStayRoomIds(stay);
   if (ids.length === 0) return "—";
 

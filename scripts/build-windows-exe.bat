@@ -18,10 +18,34 @@ if errorlevel 1 (
   exit /b 1
 )
 
+for /f %%i in ('node -p "require('./package.json').version"') do set "APPVER=%%i"
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') do set "APPDATE=%%i"
+
 set "DEST=%USERPROFILE%\Desktop\app\priorato"
 mkdir "%DEST%" >nul 2>&1
-copy /Y "release\Priorato-Accoglienza-Setup-0.1.0.exe" "%DEST%\Priorato Accoglienza Setup.exe" >nul
+
+set "SETUP_SRC=release\Priorato-Accoglienza-Setup-%APPVER%.exe"
+set "PORTABLE_SRC=release\Priorato-Accoglienza-%APPVER%.exe"
+set "SETUP_DST=%DEST%\Priorato-Accoglienza-Setup-%APPVER%-%APPDATE%.exe"
+set "PORTABLE_DST=%DEST%\Priorato-Accoglienza-%APPVER%-%APPDATE%.exe"
+
+copy /Y "%SETUP_SRC%" "%SETUP_DST%" >nul
+if errorlevel 1 (
+  echo Non trovato: %SETUP_SRC%
+  pause
+  exit /b 1
+)
+copy /Y "%PORTABLE_SRC%" "%PORTABLE_DST%" >nul
+if errorlevel 1 (
+  echo Non trovato: %PORTABLE_SRC%
+  pause
+  exit /b 1
+)
+
+powershell -NoProfile -Command "Unblock-File -LiteralPath '%SETUP_DST%'; Unblock-File -LiteralPath '%PORTABLE_DST%'"
 echo.
-echo Pronto: %DEST%\Priorato Accoglienza Setup.exe
+echo Pronto:
+echo   %SETUP_DST%
+echo   %PORTABLE_DST%
 echo.
 pause

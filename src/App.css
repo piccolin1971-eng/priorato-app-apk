@@ -721,6 +721,22 @@ label.guest-search {
   background: color-mix(in srgb, var(--warn-bg) 80%, var(--surface) 20%);
 }
 
+.stat.has-diet-mark {
+  position: relative;
+}
+
+.stat-diet-dot {
+  position: absolute;
+  top: 0.32rem;
+  right: 0.32rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn-bg) 70%, #fff 30%);
+  pointer-events: none;
+}
+
 .stat-n {
   display: block;
   font-size: 1.28rem;
@@ -3036,6 +3052,33 @@ label.full-width {
 .home-tile-placeholder:hover {
   border-color: var(--line-strong);
   background: transparent;
+}
+
+.meal-only-meals {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  align-items: center;
+}
+
+.meal-only-meals legend {
+  padding: 0 0.35rem;
+  font-weight: 700;
+}
+
+.meal-only-meals .check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.ok-text {
+  color: var(--primary);
+  font-weight: 600;
 }
 
 .home-tile-icon {

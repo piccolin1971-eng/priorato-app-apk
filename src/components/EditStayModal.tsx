@@ -96,6 +96,184 @@ function stayToForm(stay: GuestStay): FormState {
 }
 
 export function EditStayModal({ stay, stays, onClose, onSaved }: Props) {
+  if (stay.kind === "meal") {
+    return <MealEditModal stay={stay} onClose={onClose} onSaved={onSaved} />;
+  }
+  return <OvernightEditModal stay={stay} stays={stays} onClose={onClose} onSaved={onSaved} />;
+}
+
+function boardForMeals(lunch: boolean, dinner: boolean): BoardType {
+  if (lunch && dinner) return "full";
+  if (lunch) return "half_lunch";
+  if (dinner) return "half_dinner";
+  return "bb";
+}
+
+function MealEditModal({
+  stay,
+  onClose,
+  onSaved,
+}: {
+  stay: GuestStay;
+  onClose: () => void;
+  onSaved: (stays: GuestStay[]) => void;
+}) {
+  const [guestName, setGuestName] = useState(stay.guestName);
+  const [guestPhone, setGuestPhone] = useState(stay.guestPhone ?? "");
+  const [day, setDay] = useState(stay.checkIn);
+  const [personCount, setPersonCount] = useState(getPersonCount(stay));
+  const [lunch, setLunch] = useState(stay.lunch);
+  const [dinner, setDinner] = useState(stay.dinner);
+  const [intolerances, setIntolerances] = useState(stay.intolerances);
+  const [intoleranceCounts, setIntoleranceCounts] = useState<IntoleranceCounts>(
+    stay.intoleranceCounts ?? emptyIntoleranceCounts(),
+  );
+  const [notes, setNotes] = useState(stay.notes);
+  const [message, setMessage] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!guestName.trim()) return setMessage("Inserisci un nome o riferimento.");
+    if (!lunch && !dinner) return setMessage("Segna almeno pranzo o cena.");
+    const people = Math.max(1, personCount);
+    const intoleranceExtras = buildIntoleranceFields(
+      people > 1 ? "party" : "single",
+      intoleranceCounts,
+      intolerances,
+    );
+    onSaved(
+      updateStay({
+        ...stay,
+        kind: "meal",
+        guestName: guestName.trim(),
+        guestPhone: guestPhone.trim() || undefined,
+        roomId: "",
+        roomIds: [],
+        personCount: people,
+        checkIn: day,
+        checkOut: day,
+        board: boardForMeals(lunch, dinner),
+        lunch,
+        dinner,
+        intolerances: intoleranceExtras.intolerances,
+        intoleranceCounts: intoleranceExtras.intoleranceCounts,
+        notes: notes.trim(),
+        updatedAt: new Date().toISOString(),
+        lastModifiedByDevice: getDeviceName(),
+        group: undefined,
+        secondGuestName: undefined,
+        arrivalMeal: undefined,
+        departureMeal: undefined,
+      }),
+    );
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose} role="presentation">
+      <div
+        className="modal panel"
+        role="dialog"
+        aria-labelledby="edit-meal-title"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="modal-head">
+          <h2 id="edit-meal-title">Modifica pranzo/cena</h2>
+          <button type="button" className="btn ghost small" onClick={onClose} aria-label="Chiudi">
+            ✕
+          </button>
+        </header>
+        <form className="form" onSubmit={handleSubmit}>
+          <DateInput label="Giorno" value={day} onChange={setDay} />
+          <div className="grid two">
+            <label>
+              Nome o riferimento *
+              <input value={guestName} onChange={(e) => setGuestName(e.target.value)} />
+            </label>
+            <label>
+              Telefono
+              <input value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} />
+            </label>
+          </div>
+          <label>
+            Persone
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={personCount}
+              onChange={(e) => setPersonCount(Math.max(1, Number(e.target.value) || 1))}
+            />
+          </label>
+          <fieldset className="meal-only-meals">
+            <legend>Pasti</legend>
+            <label className="check">
+              <input type="checkbox" checked={lunch} onChange={(e) => setLunch(e.target.checked)} />
+              Pranzo
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={dinner} onChange={(e) => setDinner(e.target.checked)} />
+              Cena
+            </label>
+          </fieldset>
+          {personCount > 1 ? (
+            <IntoleranceCountsFields
+              value={intoleranceCounts}
+              onChange={setIntoleranceCounts}
+              totalPeople={personCount}
+            />
+          ) : (
+            <label>
+              Intolleranze / diete
+              <input value={intolerances} onChange={(e) => setIntolerances(e.target.value)} />
+            </label>
+          )}
+          {personCount > 1 && (
+            <label>
+              Note intolleranze
+              <input value={intolerances} onChange={(e) => setIntolerances(e.target.value)} />
+            </label>
+          )}
+          <label>
+            Note
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+          </label>
+          {message && <p className="warn-text">{message}</p>}
+          <div className="form-actions">
+            <button type="button" className="btn danger ghost" onClick={() => setDeleteOpen(true)}>
+              Elimina
+            </button>
+            <button type="submit" className="btn primary">
+              Salva
+            </button>
+          </div>
+        </form>
+        <ConfirmDialog
+          open={deleteOpen}
+          title="Elimina pranzo/cena"
+          message={`Eliminare definitivamente ${stayDisplayName(stay)}?`}
+          confirmLabel="Elimina"
+          danger
+          onCancel={() => setDeleteOpen(false)}
+          onConfirm={() => {
+            onSaved(deleteStay(stay.id));
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function OvernightEditModal({ stay, stays, onClose, onSaved }: Props) {
   const { confirmBeforeDelete } = useSettings();
   const [form, setForm] = useState(() => stayToForm(stay));
   const [message, setMessage] = useState("");

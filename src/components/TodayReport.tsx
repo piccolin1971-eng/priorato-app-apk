@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { GuestStay } from "../types";
+import type { GuestStay, IntoleranceCounts } from "../types";
 import { ROOMS } from "../data/rooms";
 import { deleteStay } from "../storage";
 import { getDayOccupancy } from "../roomAvailability";
@@ -24,6 +24,8 @@ type Props = {
   searchQuery?: string;
   onChange: (stays: GuestStay[]) => void;
   onOpenRooms?: () => void;
+  /** Solo in home: apre Occupazione nella riga filtri sotto le date. */
+  onOpenOccupazione?: () => void;
   /** Sulla home: niente titolo "Report del…", stessa maschera di numeri. */
   embedded?: boolean;
 };
@@ -95,22 +97,29 @@ function StatButton({
   title,
   onClick,
   className,
+  dietMark = false,
 }: {
   value: string | number;
   label: string;
   title: string;
   onClick: () => void;
   className?: string;
+  /** Pallino giallo: diete/intolleranze per quel pasto. */
+  dietMark?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={`stat stat-clickable${className ? ` ${className}` : ""}`}
+      className={`stat stat-clickable${className ? ` ${className}` : ""}${dietMark ? " has-diet-mark" : ""}`}
       onClick={onClick}
       title={title}
     >
+      {dietMark ? (
+        <span className="stat-diet-dot" aria-hidden title="Ci sono diete particolari" />
+      ) : null}
       <span className="stat-n">{value}</span>
       <span className="stat-l">{label}</span>
+      {dietMark ? <span className="visually-hidden"> · diete particolari</span> : null}
     </button>
   );
 }
@@ -156,6 +165,7 @@ export function TodayReport({
   searchQuery = "",
   onChange,
   onOpenRooms,
+  onOpenOccupazione,
   embedded = false,
 }: Props) {
   const [editing, setEditing] = useState<GuestStay | null>(null);
@@ -164,9 +174,18 @@ export function TodayReport({
 
   const stats = useMemo(() => {
     const occupancy = getDayOccupancy(stays, day);
-    const inHouse = filterStaysByQuery(stays.filter((s) => stayOccupiesDay(s, day)), searchQuery);
-    const arrivals = filterStaysByQuery(stays.filter((s) => s.checkIn === day), searchQuery);
-    const departures = filterStaysByQuery(stays.filter((s) => s.checkOut === day), searchQuery);
+    const inHouse = filterStaysByQuery(
+      stays.filter((s) => s.kind !== "meal" && stayOccupiesDay(s, day)),
+      searchQuery,
+    );
+    const arrivals = filterStaysByQuery(
+      stays.filter((s) => s.kind !== "meal" && s.checkIn === day),
+      searchQuery,
+    );
+    const departures = filterStaysByQuery(
+      stays.filter((s) => s.kind !== "meal" && s.checkOut === day),
+      searchQuery,
+    );
     const lunch = filterStaysByQuery(
       stays.filter((s) => mealIncludedOnDay(s, day, "lunch")),
       searchQuery,
@@ -208,6 +227,8 @@ export function TodayReport({
       lunch,
       dinner,
       intolerances,
+      lunchIntolerances,
+      dinnerIntolerances,
       lunchIntolerancesCount: lunchIntolerances.length,
       dinnerIntolerancesCount: dinnerIntolerances.length,
       lunchIntolCounts,
@@ -291,6 +312,11 @@ export function TodayReport({
         >
           Con cena
         </button>
+        {onOpenOccupazione && (
+          <button type="button" className="quick-filter-btn" onClick={onOpenOccupazione}>
+            Occupazione
+          </button>
+        )}
       </div>
 
       <div className="stat-grid">
@@ -313,28 +339,29 @@ export function TodayReport({
         <StatButton
           value={stats.lunchPeople}
           label="A pranzo"
-          title="Vai all'elenco pranzo"
+          title={
+            stats.lunchIntolerancesCount > 0 || intoleranceCountsTotal(stats.lunchIntolCounts) > 0
+              ? "Elenco pranzo e diete particolari"
+              : "Vai all'elenco pranzo"
+          }
           onClick={() => showSection(SECTION.pranzo)}
+          dietMark={
+            stats.lunchIntolerancesCount > 0 || intoleranceCountsTotal(stats.lunchIntolCounts) > 0
+          }
         />
         <StatButton
           value={stats.dinnerPeople}
           label="A cena"
-          title="Vai all'elenco cena"
+          title={
+            stats.dinnerIntolerancesCount > 0 || intoleranceCountsTotal(stats.dinnerIntolCounts) > 0
+              ? "Elenco cena e diete particolari"
+              : "Vai all'elenco cena"
+          }
           onClick={() => showSection(SECTION.cena)}
+          dietMark={
+            stats.dinnerIntolerancesCount > 0 || intoleranceCountsTotal(stats.dinnerIntolCounts) > 0
+          }
         />
-        {(stats.intolerances.length > 0 || stats.intolCountTotal > 0) && (
-          <StatButton
-            value={stats.intolCountTotal > 0 ? stats.intolCountTotal : stats.intolerances.length}
-            label={
-              stats.intolCountTotal > 0
-                ? `Diete pranzo/cena`
-                : `Pranzo ${stats.lunchIntolerancesCount} · Cena ${stats.dinnerIntolerancesCount}`
-            }
-            title="Vai al dettaglio intolleranze"
-            onClick={() => showSection(SECTION.intolleranze)}
-            className="stat-alert"
-          />
-        )}
       </div>
       <div className="stat-grid stat-grid-movement">
         <MovementStatButton
@@ -373,78 +400,81 @@ export function TodayReport({
       )}
 
       {openSection === SECTION.intolleranze && (stats.intolerances.length > 0 || stats.intolCountTotal > 0) && (
-        <div className="card inset warn report-section" id={SECTION.intolleranze}>
-          <h3 className="report-title">Intolleranze / allergie (cucina)</h3>
-          {stats.intolCountTotal > 0 && (
-            <div className="intolerance-totals">
-              {intoleranceCountsTotal(stats.lunchIntolCounts) > 0 && (
-                <p>
-                  <strong>Pranzo:</strong> {formatIntoleranceCounts(stats.lunchIntolCounts)}
-                </p>
-              )}
-              {intoleranceCountsTotal(stats.dinnerIntolCounts) > 0 && (
-                <p>
-                  <strong>Cena:</strong> {formatIntoleranceCounts(stats.dinnerIntolCounts)}
-                </p>
-              )}
-            </div>
-          )}
-          {stats.intolerances.length > 0 && (
-            <ul className="simple-list">
-              {stats.intolerances.map((s) => (
-                <li key={s.id}>
-                  {stayDisplayName(s)} ({stayRoomsLabel(s)}): {formatStayIntolerances(s)}
-                  {(s.lunch || s.dinner) && (
-                    <span className="muted">
-                      {" "}
-                      — {s.lunch && s.dinner ? "pranzo e cena" : s.lunch ? "pranzo" : "cena"}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <MealDietsCard
+          id={SECTION.intolleranze}
+          title="Intolleranze / allergie (cucina)"
+          lunchCounts={stats.lunchIntolCounts}
+          dinnerCounts={stats.dinnerIntolCounts}
+          stays={stats.intolerances}
+          showLunch
+          showDinner
+        />
       )}
 
       {openSection === SECTION.pranzo && (
-        <div className="card inset report-section" id={SECTION.pranzo}>
-          <h3 className="report-title">Elenco pranzo</h3>
-          {stats.lunch.length === 0 ? (
-            <p className="muted">Nessuno a pranzo.</p>
-          ) : (
-            <ul className="simple-list">
-              {stats.lunch.map((s) => (
-                <li key={`lunch-${s.id}`}>
-                  {stayDisplayName(s)} · {stayRoomsLabel(s)}
-                  {stayGroupLabel(s) && ` · ${stayGroupLabel(s)}`}
-                  {formatStayIntolerances(s) && ` · ${formatStayIntolerances(s)}`}
-                  {formatStayMealTiming(s, day) && ` · ${formatStayMealTiming(s, day)}`}
-                </li>
-              ))}
-            </ul>
+        <>
+          <div className="card inset report-section" id={SECTION.pranzo}>
+            <h3 className="report-title">Elenco pranzo</h3>
+            {stats.lunch.length === 0 ? (
+              <p className="muted">Nessuno a pranzo.</p>
+            ) : (
+              <ul className="simple-list">
+                {stats.lunch.map((s) => (
+                  <li key={`lunch-${s.id}`}>
+                    {stayDisplayName(s)} · {stayRoomsLabel(s)}
+                    {stayGroupLabel(s) && ` · ${stayGroupLabel(s)}`}
+                    {formatStayIntolerances(s) && ` · ${formatStayIntolerances(s)}`}
+                    {formatStayMealTiming(s, day) && ` · ${formatStayMealTiming(s, day)}`}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {(stats.lunchIntolerancesCount > 0 || intoleranceCountsTotal(stats.lunchIntolCounts) > 0) && (
+            <MealDietsCard
+              id={`${SECTION.pranzo}-diete`}
+              title="Diete particolari — pranzo"
+              lunchCounts={stats.lunchIntolCounts}
+              dinnerCounts={stats.dinnerIntolCounts}
+              stays={stats.lunchIntolerances}
+              showLunch
+              showDinner={false}
+            />
           )}
-        </div>
+        </>
       )}
 
       {openSection === SECTION.cena && (
-        <div className="card inset report-section" id={SECTION.cena}>
-          <h3 className="report-title">Elenco cena</h3>
-          {stats.dinner.length === 0 ? (
-            <p className="muted">Nessuno a cena.</p>
-          ) : (
-            <ul className="simple-list">
-              {stats.dinner.map((s) => (
-                <li key={`dinner-${s.id}`}>
-                  {stayDisplayName(s)} · {stayRoomsLabel(s)}
-                  {stayGroupLabel(s) && ` · ${stayGroupLabel(s)}`}
-                  {formatStayIntolerances(s) && ` · ${formatStayIntolerances(s)}`}
-                  {formatStayMealTiming(s, day) && ` · ${formatStayMealTiming(s, day)}`}
-                </li>
-              ))}
-            </ul>
+        <>
+          <div className="card inset report-section" id={SECTION.cena}>
+            <h3 className="report-title">Elenco cena</h3>
+            {stats.dinner.length === 0 ? (
+              <p className="muted">Nessuno a cena.</p>
+            ) : (
+              <ul className="simple-list">
+                {stats.dinner.map((s) => (
+                  <li key={`dinner-${s.id}`}>
+                    {stayDisplayName(s)} · {stayRoomsLabel(s)}
+                    {stayGroupLabel(s) && ` · ${stayGroupLabel(s)}`}
+                    {formatStayIntolerances(s) && ` · ${formatStayIntolerances(s)}`}
+                    {formatStayMealTiming(s, day) && ` · ${formatStayMealTiming(s, day)}`}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {(stats.dinnerIntolerancesCount > 0 || intoleranceCountsTotal(stats.dinnerIntolCounts) > 0) && (
+            <MealDietsCard
+              id={`${SECTION.cena}-diete`}
+              title="Diete particolari — cena"
+              lunchCounts={stats.lunchIntolCounts}
+              dinnerCounts={stats.dinnerIntolCounts}
+              stays={stats.dinnerIntolerances}
+              showLunch={false}
+              showDinner
+            />
           )}
-        </div>
+        </>
       )}
 
       {openSection === SECTION.arrivi && (
@@ -514,6 +544,61 @@ export function TodayReport({
         </div>
       )}
     </section>
+  );
+}
+
+function MealDietsCard({
+  id,
+  title,
+  lunchCounts,
+  dinnerCounts,
+  stays,
+  showLunch,
+  showDinner,
+}: {
+  id: string;
+  title: string;
+  lunchCounts: IntoleranceCounts;
+  dinnerCounts: IntoleranceCounts;
+  stays: GuestStay[];
+  showLunch: boolean;
+  showDinner: boolean;
+}) {
+  const lunchTotal = intoleranceCountsTotal(lunchCounts);
+  const dinnerTotal = intoleranceCountsTotal(dinnerCounts);
+  return (
+    <div className="card inset warn report-section" id={id}>
+      <h3 className="report-title">{title}</h3>
+      {(lunchTotal > 0 || dinnerTotal > 0) && (
+        <div className="intolerance-totals">
+          {showLunch && lunchTotal > 0 && (
+            <p>
+              <strong>Pranzo:</strong> {formatIntoleranceCounts(lunchCounts)}
+            </p>
+          )}
+          {showDinner && dinnerTotal > 0 && (
+            <p>
+              <strong>Cena:</strong> {formatIntoleranceCounts(dinnerCounts)}
+            </p>
+          )}
+        </div>
+      )}
+      {stays.length > 0 && (
+        <ul className="simple-list">
+          {stays.map((s) => (
+            <li key={s.id}>
+              {stayDisplayName(s)} ({stayRoomsLabel(s)}): {formatStayIntolerances(s)}
+              {(s.lunch || s.dinner) && (
+                <span className="muted">
+                  {" "}
+                  — {s.lunch && s.dinner ? "pranzo e cena" : s.lunch ? "pranzo" : "cena"}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

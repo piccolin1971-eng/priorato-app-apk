@@ -63,6 +63,7 @@ export function occupancyEndExclusive(stay: GuestStay): string {
 
 /** Presente in casa quel giorno: notti + partenza tardiva il giorno di checkout. */
 export function stayOccupiesDay(stay: GuestStay, day: string): boolean {
+  if (stay.kind === "meal") return false;
   return stay.checkIn <= day && day < occupancyEndExclusive(stay);
 }
 

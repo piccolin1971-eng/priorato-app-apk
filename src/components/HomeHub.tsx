@@ -118,6 +118,7 @@ export function HomeHub({
         searchQuery={searchQuery}
         onChange={onChange}
         onOpenRooms={() => onOpenTab("camere")}
+        onOpenOccupazione={() => onOpenTab("pianificazione")}
         embedded
       />
 
@@ -129,12 +130,12 @@ export function HomeHub({
           <span className="home-tile-title">Registra ospite</span>
           <span className="home-tile-desc">Nuovo arrivo o gruppo</span>
         </button>
-        <button type="button" className="home-tile" onClick={() => onOpenTab("camere")}>
+        <button type="button" className="home-tile" onClick={() => onOpenTab("pasti")}>
           <span className="home-tile-icon" aria-hidden>
-            🛏️
+            🍽️
           </span>
-          <span className="home-tile-title">Camere libere</span>
-          <span className="home-tile-desc">Per la data scelta sopra</span>
+          <span className="home-tile-title">Registra pranzi/cene</span>
+          <span className="home-tile-desc">Solo pasti, senza camera</span>
         </button>
         <button type="button" className="home-tile" onClick={() => onOpenTab("stampa")}>
           <span className="home-tile-icon" aria-hidden>
@@ -142,13 +143,16 @@ export function HomeHub({
           </span>
           <span className="home-tile-title">Stampa report</span>
         </button>
-        <div className="home-tile home-tile-placeholder" aria-hidden />
+        <button type="button" className="home-tile" onClick={() => onOpenTab("camere")}>
+          <span className="home-tile-icon" aria-hidden>
+            🛏️
+          </span>
+          <span className="home-tile-title">Camere libere</span>
+          <span className="home-tile-desc">Per la data scelta sopra</span>
+        </button>
       </div>
 
       <nav className="home-footer-links" aria-label="Altre sezioni">
-        <button type="button" onClick={() => onOpenTab("pianificazione")}>
-          Occupazione
-        </button>
         <button type="button" onClick={onOpenSearch}>
           Cerca ospite
         </button>

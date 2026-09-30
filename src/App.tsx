@@ -5,6 +5,7 @@ import type { GuestStay, TabId } from "./types";
 import { isSessionUnlocked } from "./appLock";
 import { loadStays } from "./storage";
 import { RegistrationForm } from "./components/RegistrationForm";
+import { MealRegistrationForm } from "./components/MealRegistrationForm";
 import { TodayReport } from "./components/TodayReport";
 import { RoomOverview } from "./components/RoomOverview";
 import { PlanningView } from "./components/PlanningView";
@@ -153,6 +154,11 @@ function AppMain() {
   const [searchDraft, setSearchDraft] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEditing, setSearchEditing] = useState<GuestStay | null>(null);
+  const [regDraft, setRegDraft] = useState<{
+    roomId: string;
+    checkIn: string;
+    checkOut: string;
+  } | null>(null);
 
   useAutoBackup(stays);
   const stationSync = useStationSync({ stays, setStays });
@@ -295,7 +301,10 @@ function AppMain() {
                   key={t.id}
                   type="button"
                   className={tab === t.id ? "tab active" : "tab"}
-                  onClick={() => setTab(t.id)}
+                  onClick={() => {
+                    setRegDraft(null);
+                    setTab(t.id);
+                  }}
                 >
                   {t.label}
                 </button>
@@ -347,7 +356,10 @@ function AppMain() {
             dayPicker={<QuickReportDayPicker value={reportDay} onChange={setReportDay} />}
             searchQuery={searchQuery}
             onChange={setStays}
-            onOpenTab={setTab}
+            onOpenTab={(id) => {
+              if (id !== "registra") setRegDraft(null);
+              setTab(id);
+            }}
             onOpenSearch={() => setSearchOpen(true)}
             onOpenSettings={openSettings}
           />
@@ -362,7 +374,22 @@ function AppMain() {
           />
         )}
         {!inSettings && tab === "registra" && (
-          <RegistrationForm stays={stays} onSaved={setStays} />
+          <RegistrationForm
+            stays={stays}
+            draft={regDraft}
+            onSaved={(next) => {
+              setStays(next);
+              setRegDraft(null);
+            }}
+          />
+        )}
+        {!inSettings && tab === "pasti" && (
+          <MealRegistrationForm
+            stays={stays}
+            defaultDay={reportDay}
+            onSaved={setStays}
+            onCancel={() => setTab("home")}
+          />
         )}
         {!inSettings && tab === "camere" && (
           <RoomOverview
@@ -373,7 +400,18 @@ function AppMain() {
           />
         )}
         {!inSettings && tab === "pianificazione" && (
-          <PlanningView stays={stays} day={reportDay} onEditStay={setSearchEditing} />
+          <PlanningView
+            stays={stays}
+            day={reportDay}
+            onEditStay={setSearchEditing}
+            onRegisterRoom={(opts) => {
+              setRegDraft(opts);
+              setTab("registra");
+              window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+              document.documentElement.scrollTop = 0;
+              document.body.scrollTop = 0;
+            }}
+          />
         )}
         {!inSettings && tab === "stampa" && (
           <PrintReportPanel stays={stays} defaultDate={reportDay} />

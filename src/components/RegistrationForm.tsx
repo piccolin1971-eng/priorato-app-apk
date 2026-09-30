@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ArrivalMeal, BoardType, DepartureMeal, GuestStay, IntoleranceCounts, RegistrationKind } from "../types";
 import { addStay } from "../storage";
 import { formatPartyLayoutLabel } from "../assignNearbyRooms";
 import { getAvailableRooms, findRoomOverlaps, formatOverlapMessage, getDayOccupancy, suggestHeatedRoom } from "../roomAvailability";
-import { MAX_PARTY_PEOPLE } from "../data/rooms";
+import { MAX_PARTY_PEOPLE, ROOMS } from "../data/rooms";
 import { roomOptionLabel, sortRoomsForSelect } from "../roomSelect";
 import { buildIntoleranceFields, buildMealTimingFields } from "../stayFields";
 import { buildPartyGroupInfo, participantsFromOccupants } from "../partyStay";
@@ -19,6 +19,12 @@ import { RoomPickMap } from "./RoomPickMap";
 type Props = {
   stays: GuestStay[];
   onSaved: (stays: GuestStay[]) => void;
+  /** Prefill da Occupazione (camera + date). */
+  draft?: {
+    roomId: string;
+    checkIn: string;
+    checkOut: string;
+  } | null;
 };
 
 type RegMode = RegistrationKind;
@@ -45,19 +51,33 @@ type FormState = {
   partyCouples: number;
 };
 
-function newForm(stays: GuestStay[]): FormState {
-  const checkIn = todayIso();
-  const tomorrow = isoToDate(checkIn);
-  if (tomorrow) tomorrow.setDate(tomorrow.getDate() + 1);
-  const checkOut = tomorrow ? dateToIso(tomorrow) : checkIn;
+function newForm(
+  stays: GuestStay[],
+  draft?: { roomId: string; checkIn: string; checkOut: string } | null,
+): FormState {
+  const checkIn = draft?.checkIn || todayIso();
+  let checkOut = draft?.checkOut || "";
+  if (!checkOut || checkOut <= checkIn) {
+    const tomorrow = isoToDate(checkIn);
+    if (tomorrow) tomorrow.setDate(tomorrow.getDate() + 1);
+    checkOut = tomorrow ? dateToIso(tomorrow) : checkIn;
+  }
+  const draftRoom = draft?.roomId ? ROOMS.find((r) => r.id === draft.roomId) : undefined;
+  const mode: RegMode = draftRoom?.bedType === "double" ? "double" : "single";
+  const bedType = mode === "double" ? "double" : "single";
+  const roomId =
+    draft?.roomId &&
+    getAvailableRooms(stays, checkIn, checkOut, undefined, bedType).some((r) => r.id === draft.roomId)
+      ? draft.roomId
+      : suggestHeatedRoom(stays, checkIn, checkOut, bedType);
   return {
-    mode: "single",
+    mode,
     guestName: "",
     secondGuestName: "",
     guestPhone: "",
     guestEmail: "",
     groupName: "",
-    roomId: suggestHeatedRoom(stays, checkIn, checkOut, "single"),
+    roomId,
     checkIn,
     checkOut,
     board: "bb",
@@ -81,11 +101,41 @@ const MODES: { id: RegMode; label: string; hint: string }[] = [
   },
 ];
 
-export function RegistrationForm({ stays, onSaved }: Props) {
-  const [form, setForm] = useState(() => newForm(stays));
+export function RegistrationForm({ stays, onSaved, draft = null }: Props) {
+  const [form, setForm] = useState(() => newForm(stays, draft));
   const [message, setMessage] = useState("");
-  const [guided, setGuided] = useState(true);
-  const [step, setStep] = useState(1);
+  const [guided, setGuided] = useState(() => true);
+  const [step, setStep] = useState(() => (draft ? 4 : 1));
+  const panelRef = useRef<HTMLElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  function jumpToFormStart() {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    panelRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+    // Dopo il paint: focus sul nome, così la scheda non resta a metà pagina.
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      nameRef.current?.focus({ preventScroll: false });
+    });
+  }
+
+  useEffect(() => {
+    if (!draft) return;
+    setForm(newForm(stays, draft));
+    // Passo «Chi è»: camera e date già impostate da Occupazione; in cima i nomi.
+    setGuided(true);
+    setStep(4);
+    setMessage("");
+    jumpToFormStart();
+  }, [draft?.roomId, draft?.checkIn, draft?.checkOut]);
+
+  useEffect(() => {
+    jumpToFormStart();
+    // All'apertura della scheda (anche da Occupazione) riparti dall'inizio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const datesValid = form.checkOut > form.checkIn;
   const totalPeople = Math.max(0, form.partyPeople);
@@ -324,6 +374,14 @@ export function RegistrationForm({ stays, onSaved }: Props) {
 
   const stepTitles = ["Chi arriva", "Quando", "Dove", "Chi è", "Pensione"];
 
+  const draftBanner =
+    draft != null ? (
+      <p className="muted">
+        Da Occupazione · camera {ROOMS.find((r) => r.id === draft.roomId)?.number ?? draft.roomId} ·{" "}
+        {form.checkIn} → {form.checkOut}
+      </p>
+    ) : null;
+
   const pathToggle = (
     <div className="reg-path-toggle" role="group" aria-label="Tipo di registrazione">
       <button
@@ -345,9 +403,10 @@ export function RegistrationForm({ stays, onSaved }: Props) {
 
   if (guided) {
     return (
-      <section className="panel">
+      <section className="panel" ref={panelRef}>
         <header className="panel-head">
           <h2>Nuova registrazione</h2>
+          {draftBanner}
           {pathToggle}
         </header>
         <p className="wizard-progress">
@@ -506,6 +565,7 @@ export function RegistrationForm({ stays, onSaved }: Props) {
                     ? "Primo ospite *"
                     : "Nome ospite *"}
                 <input
+                  ref={nameRef}
                   value={form.guestName}
                   onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
                   placeholder="Nome e cognome"
@@ -642,9 +702,10 @@ export function RegistrationForm({ stays, onSaved }: Props) {
   }
 
   return (
-    <section className="panel">
+    <section className="panel" ref={panelRef}>
         <header className="panel-head">
           <h2>Nuova registrazione</h2>
+          {draftBanner}
           {pathToggle}
         </header>
 
@@ -675,6 +736,7 @@ export function RegistrationForm({ stays, onSaved }: Props) {
             <label>
               Primo ospite *
               <input
+                ref={nameRef}
                 value={form.guestName}
                 onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
                 placeholder="Nome e cognome"
@@ -780,6 +842,7 @@ export function RegistrationForm({ stays, onSaved }: Props) {
             <label>
               Nome ospite *
               <input
+                ref={nameRef}
                 value={form.guestName}
                 onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
                 placeholder="Nome e cognome"

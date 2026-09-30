@@ -44,7 +44,7 @@ export interface GroupInfo {
   }[];
 }
 
-export type RegistrationKind = "single" | "double" | "party" | "group";
+export type RegistrationKind = "single" | "double" | "party" | "group" | "meal";
 
 export interface GuestStay {
   id: string;
@@ -53,7 +53,7 @@ export interface GuestStay {
   secondGuestName?: string;
   guestPhone?: string;
   guestEmail?: string;
-  /** Camera principale (compatibilità) — prima di roomIds. */
+  /** Camera principale (compatibilità) — prima di roomIds. Vuota per solo pasti. */
   roomId: string;
   /** Tutte le camere occupate da questa registrazione. */
   roomIds?: string[];
@@ -84,6 +84,7 @@ export type TabId =
   | "home"
   | "oggi"
   | "registra"
+  | "pasti"
   | "camere"
   | "pianificazione"
   | "stampa"
